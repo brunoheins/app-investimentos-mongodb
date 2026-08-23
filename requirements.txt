@@ -1,0 +1,11 @@
+streamlit>=1.40.0
+starlette<0.40.0
+gspread>=5.12.0
+google-auth
+pandas
+plotly
+openpyxl>=3.0.0
+xlsxwriter>=3.0.0
+oauth2client>=4.1.3
+yfinance>=0.2.40
+requests>=2.31.0
