@@ -10,6 +10,17 @@ import requests
 import yfinance as yf
 import re
 import io
+import streamlit as st
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
+@st.cache_resource
+def init_connection():
+    uri = st.secrets["MONGO_URI"]
+    client = MongoClient(uri, server_api=ServerApi('1'))
+    return client['app_investimentos']
+
+db = init_connection()
 
 def extrair_numero_br(valor):
     """Converte strings de planilhas para float lidando com formatos BR e US automaticamente"""
