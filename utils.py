@@ -59,20 +59,21 @@ def ler_planilha(aba_nome):
     """
     try:
         if aba_nome == "Usuarios":
-            usuarios = list(db.usuarios.find({}, {"_id": 0, "email": 1, "senha": 1, "nome": 1, "status": 1}))
+            # Busca pelo _id ao invés de email
+            usuarios = list(db.usuarios.find({}, {"_id": 1, "senha": 1, "nome": 1, "status": 1}))
             if not usuarios: return pd.DataFrame(columns=['Email', 'Senha', 'Nome', 'Status'])
             df = pd.DataFrame(usuarios)
-            df.rename(columns={"email": "Email", "senha": "Senha", "nome": "Nome", "status": "Status"}, inplace=True)
+            df.rename(columns={"_id": "Email", "senha": "Senha", "nome": "Nome", "status": "Status"}, inplace=True)
             return df
             
         elif aba_nome == "Configuracao":
-            usuarios = list(db.usuarios.find({}, {"_id": 0, "email": 1, "metas": 1}))
+            usuarios = list(db.usuarios.find({}, {"_id": 1, "metas": 1}))
             linhas = []
             for u in usuarios:
                 m = u.get("metas", {})
                 if m:
                     linhas.append({
-                        "Email": u.get("email"), "RF": m.get("rf",0), "RV": m.get("rv",0),
+                        "Email": u.get("_id"), "RF": m.get("rf",0), "RV": m.get("rv",0),
                         "RV_Brasil": m.get("br",0), "RV_Exterior": m.get("ex",0),
                         "BR_Acoes": m.get("ac",0), "BR_FIIs": m.get("fii",0),
                         "EX_Stocks": m.get("st",0), "EX_REITs": m.get("re",0), "EX_ETFs": m.get("et",0)
@@ -81,19 +82,18 @@ def ler_planilha(aba_nome):
             return pd.DataFrame(linhas)
             
         elif aba_nome == "Ativos_Config":
-            usuarios = list(db.usuarios.find({}, {"_id": 0, "email": 1, "ativos": 1}))
+            usuarios = list(db.usuarios.find({}, {"_id": 1, "ativos": 1}))
             linhas = []
             for u in usuarios:
                 for a in u.get("ativos", []):
                     linhas.append({
-                        "Email": u.get("email"), "Categoria": a.get("cat"), "Ativo": a.get("atv"),
+                        "Email": u.get("_id"), "Categoria": a.get("cat"), "Ativo": a.get("atv"),
                         "Peso": a.get("p"), "Setor": a.get("set")
                     })
             if not linhas: return pd.DataFrame(columns=['Email', 'Categoria', 'Ativo', 'Peso', 'Setor'])
             return pd.DataFrame(linhas)
             
         elif aba_nome == "Depositos":
-            # Busca apenas transações do tipo Depósito (D)
             txs = list(db.transacoes.find({"tipo": "D"}, {"_id": 0}))
             linhas = []
             for t in txs:
@@ -106,7 +106,6 @@ def ler_planilha(aba_nome):
             return pd.DataFrame(linhas)
             
         elif aba_nome == "Investimentos":
-            # Busca apenas transações do tipo Investimento (I)
             txs = list(db.transacoes.find({"tipo": "I"}, {"_id": 0}))
             linhas = []
             for t in txs:
@@ -117,7 +116,7 @@ def ler_planilha(aba_nome):
                     "Ativo": t.get("atv"),
                     "Quantidade": t.get("qtd"),
                     "PrecoMedio": t.get("pm"),
-                    "Observacao": t.get("obs")
+                    "Observacao": t.get("obs", "") # Usa .get com default vazio para tratar omissão
                 })
             if not linhas: return pd.DataFrame(columns=['Email', 'DataCompra', 'Categoria', 'Ativo', 'Quantidade', 'PrecoMedio', 'Observacao'])
             return pd.DataFrame(linhas)
@@ -131,10 +130,9 @@ def ler_planilha(aba_nome):
 # 4. TRADUTORES DE GRAVAÇÃO (EMBEDDING E UNIFICAÇÃO)
 # ==========================================
 def salvar_configuracao(email, dados_dict):
-    """Atualiza o documento embutido (metas) dentro do usuário."""
     try:
         db.usuarios.update_one(
-            {"email": email.strip().lower()},
+            {"_id": email.strip().lower()},
             {"$set": {
                 "metas.rf": float(dados_dict['RF'].replace(',', '.')),
                 "metas.rv": float(dados_dict['RV'].replace(',', '.')),
@@ -155,12 +153,10 @@ def salvar_configuracao(email, dados_dict):
         return False
 
 def salvar_ativos_categoria(email, categoria, df_ativos):
-    """Atualiza a lista embutida de ativos, protegendo outras categorias."""
     try:
-        user = db.usuarios.find_one({"email": email.strip().lower()})
+        user = db.usuarios.find_one({"_id": email.strip().lower()})
         ativos_mantidos = []
         if user:
-            # Preserva os ativos que NÃO são da categoria que estamos editando agora
             ativos_mantidos = [a for a in user.get("ativos", []) if a.get("cat") != categoria.strip()]
             
         for _, row in df_ativos.iterrows():
@@ -174,7 +170,7 @@ def salvar_ativos_categoria(email, categoria, df_ativos):
                 ativos_mantidos.append({"cat": categoria.strip(), "atv": ativo, "p": float(peso), "set": setor})
                 
         db.usuarios.update_one(
-            {"email": email.strip().lower()},
+            {"_id": email.strip().lower()},
             {"$set": {"ativos": ativos_mantidos}},
             upsert=True
         )
@@ -185,7 +181,6 @@ def salvar_ativos_categoria(email, categoria, df_ativos):
         return False
 
 def registrar_deposito(email, data, valor):
-    """Grava na coleção única de transações como tipo 'D' (Depósito)"""
     try:
         data_val = datetime.strptime(data, "%d/%m/%Y")
         db.transacoes.insert_one({
@@ -198,7 +193,6 @@ def registrar_deposito(email, data, valor):
         return False
 
 def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, observacao=""):
-    """Grava na coleção única de transações como tipo 'I' (Investimento)"""
     try:
         data_val = datetime.strptime(data, "%d/%m/%Y")
         doc = {
@@ -206,7 +200,7 @@ def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, obs
             "cat": categoria.strip(), "atv": ativo.strip().upper(),
             "qtd": float(quantidade), "pm": float(preco_medio)
         }
-        # Só cria o campo 'obs' no banco se o usuário realmente digitou algo
+        # Omissão de campo vazio otimizada
         if observacao.strip(): 
             doc["obs"] = observacao.strip()
             
@@ -221,7 +215,6 @@ def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, obs
 # 5. GERENCIADOR DE EDIÇÃO E BACKUP (AUDITORIA)
 # ==========================================
 def atualizar_historico_usuario(email, nome_aba, df_editado):
-    """Permite editar histórico no editor de dados, mapeando para o novo banco V2."""
     try:
         e_lower = email.strip().lower()
         if nome_aba == "Depositos":
@@ -243,12 +236,15 @@ def atualizar_historico_usuario(email, nome_aba, df_editado):
                 for _, row in df_editado.iterrows():
                     d = pd.to_datetime(row.get("DataCompra"), errors='coerce', dayfirst=True)
                     if pd.notna(d):
-                        novos.append({
+                        doc = {
                             "email": e_lower, "tipo": "I", "dt": d, 
                             "cat": str(row.get("Categoria")), "atv": str(row.get("Ativo")).upper(),
-                            "qtd": extrair_numero_br(row.get("Quantidade")), "pm": extrair_numero_br(row.get("PrecoMedio")),
-                            "obs": str(row.get("Observacao", ""))
-                        })
+                            "qtd": extrair_numero_br(row.get("Quantidade")), "pm": extrair_numero_br(row.get("PrecoMedio"))
+                        }
+                        obs = str(row.get("Observacao", "")).strip()
+                        if obs and obs.lower() not in ["nan", "none"]:
+                            doc["obs"] = obs
+                        novos.append(doc)
                 if novos: db.transacoes.insert_many(novos)
         
         st.cache_data.clear()
@@ -262,8 +258,8 @@ def deletar_registros_usuario(nome_aba, email):
         e_lower = email.strip().lower()
         if nome_aba == "Depositos": db.transacoes.delete_many({"email": e_lower, "tipo": "D"})
         elif nome_aba == "Investimentos": db.transacoes.delete_many({"email": e_lower, "tipo": "I"})
-        elif nome_aba == "Configuracao": db.usuarios.update_one({"email": e_lower}, {"$unset": {"metas": ""}})
-        elif nome_aba == "Ativos_Config": db.usuarios.update_one({"email": e_lower}, {"$set": {"ativos": []}})
+        elif nome_aba == "Configuracao": db.usuarios.update_one({"_id": e_lower}, {"$unset": {"metas": ""}})
+        elif nome_aba == "Ativos_Config": db.usuarios.update_one({"_id": e_lower}, {"$set": {"ativos": []}})
         st.cache_data.clear()
         return True, "Sucesso"
     except Exception as e:
@@ -272,11 +268,9 @@ def deletar_registros_usuario(nome_aba, email):
 def inserir_lote_registros(nome_aba, df):
     if df.empty: return True, "Vazio."
     try:
-        # Pega o email da primeira linha para identificar o usuário
         email = df['Email'].iloc[0].strip().lower() if 'Email' in df.columns else ""
         if not email: return False, "E-mail não encontrado no lote."
         
-        # Reaproveita a função de atualização inteligente para injetar os dados convertidos
         if nome_aba in ["Depositos", "Investimentos"]:
             atualizar_historico_usuario(email, nome_aba, df)
             
@@ -285,7 +279,6 @@ def inserir_lote_registros(nome_aba, df):
             salvar_configuracao(email, dados)
             
         elif nome_aba == "Ativos_Config":
-            # Agrupa por categoria e salva
             for cat in df['Categoria'].unique():
                 df_cat = df[df['Categoria'] == cat]
                 salvar_ativos_categoria(email, cat, df_cat)
@@ -301,22 +294,22 @@ def inserir_lote_registros(nome_aba, df):
 def registrar_novo_usuario(nome, email, senha):
     try:
         email_lower = email.strip().lower()
-        if db.usuarios.count_documents({"email": email_lower}) > 0:
+        if db.usuarios.count_documents({"_id": email_lower}) > 0:
             return False, "⚠️ Este e-mail já está cadastrado. Caso não se recorde da senha, vá em 'Esqueci a Senha'."
             
-        novo_usuario = {"email": email_lower, "senha": senha, "nome": nome.strip(), "status": "Pendente", "metas": {}, "ativos": []}
+        novo_usuario = {"_id": email_lower, "senha": senha, "nome": nome.strip(), "status": "Pendente", "metas": {}, "ativos": []}
         db.usuarios.insert_one(novo_usuario)
         st.cache_data.clear()
         return True, "✅ Cadastro enviado com sucesso! Aguarde a liberação."
     except Exception as e: return False, f"Erro ao cadastrar: {e}"
-
+        
 def verificar_email_cadastrado(email):
-    try: return db.usuarios.count_documents({"email": email.strip().lower()}) > 0
+    try: return db.usuarios.count_documents({"_id": email.strip().lower()}) > 0
     except: return False
 
 def redefinir_senha_aprovada(email, nova_senha):
     try:
-        res = db.usuarios.update_one({"email": email.strip().lower()}, {"$set": {"senha": nova_senha}})
+        res = db.usuarios.update_one({"_id": email.strip().lower()}, {"$set": {"senha": nova_senha}})
         if res.matched_count > 0:
             st.cache_data.clear()
             return True, "✅ Senha alterada com sucesso! Você já pode fazer login."
@@ -330,7 +323,7 @@ def atualizar_dados_perfil(email, novo_nome, nova_senha):
         if nova_senha: atualizacoes["senha"] = nova_senha
         if not atualizacoes: return True, "Nada a atualizar."
         
-        res = db.usuarios.update_one({"email": email.strip().lower()}, {"$set": atualizacoes})
+        res = db.usuarios.update_one({"_id": email.strip().lower()}, {"$set": atualizacoes})
         if res.matched_count > 0:
             st.cache_data.clear()
             return True, "✅ Perfil atualizado com sucesso!"
