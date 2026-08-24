@@ -201,17 +201,22 @@ def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, obs
     """Grava na coleção única de transações como tipo 'I' (Investimento)"""
     try:
         data_val = datetime.strptime(data, "%d/%m/%Y")
-        db.transacoes.insert_one({
+        doc = {
             "email": email.strip().lower(), "tipo": "I", "dt": data_val,
             "cat": categoria.strip(), "atv": ativo.strip().upper(),
-            "qtd": float(quantidade), "pm": float(preco_medio), "obs": observacao.strip()
-        })
+            "qtd": float(quantidade), "pm": float(preco_medio)
+        }
+        # Só cria o campo 'obs' no banco se o usuário realmente digitou algo
+        if observacao.strip(): 
+            doc["obs"] = observacao.strip()
+            
+        db.transacoes.insert_one(doc)
         st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Erro ao salvar ordem: {e}")
         return False
-
+        
 # ==========================================
 # 5. GERENCIADOR DE EDIÇÃO E BACKUP (AUDITORIA)
 # ==========================================
