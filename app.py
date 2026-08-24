@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from utils import ler_planilha, registrar_novo_usuario
+from utils import ler_planilha, registrar_novo_usuario, db
 
 # A configuração da página DEVE ser a primeira linha do app
 st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
@@ -45,28 +45,29 @@ def tela_acesso():
                 submit_login = st.form_submit_button("Entrar", use_container_width=True)
                 
                 if submit_login:
-                    df_usuarios = ler_planilha("Usuarios")
-                    if not df_usuarios.empty:
-                        df_usuarios['Email'] = df_usuarios['Email'].astype(str).str.strip().str.lower()
-                        df_usuarios['Senha'] = df_usuarios['Senha'].astype(str).str.strip()
-                        
-                        usuario = df_usuarios[(df_usuarios['Email'] == email_input.strip().lower()) & (df_usuarios['Senha'] == senha_input.strip())]
-                        
-                        if not usuario.empty:
-                            status_usuario = str(usuario.iloc[0]['Status']).strip()
-                            if status_usuario == 'Ativo':
-                                st.session_state.logado = True
-                                st.session_state.email = email_input.strip().lower()
-                                st.session_state.nome = usuario.iloc[0]['Nome']
-                                st.rerun()
-                            elif status_usuario == 'Pendente':
-                                st.warning("⏳ Seu cadastro está em análise pelo administrador.")
-                            else:
-                                st.error("❌ Seu acesso foi revogado.")
+                    # NOVA BUSCA OTIMIZADA DIRETO NO BANCO V2 (Ignora cache e usa o _id)
+                    email_formatado = email_input.strip().lower()
+                    senha_formatada = senha_input.strip()
+                    
+                    # Busca exatamente o _id (email) e a senha no MongoDB em milissegundos
+                    usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
+                    
+                    if usuario:
+                        status_usuario = str(usuario.get('status', 'Pendente')).strip()
+                        if status_usuario == 'Ativo':
+                            st.session_state.logado = True
+                            st.session_state.email = email_formatado
+                            st.session_state.nome = usuario.get('nome', 'Usuário')
+                            
+                            # Limpa o cache do sistema ao logar para garantir dados frescos
+                            st.cache_data.clear() 
+                            st.rerun()
+                        elif status_usuario == 'Pendente':
+                            st.warning("⏳ Seu cadastro está em análise pelo administrador.")
                         else:
-                            st.error("Usuário ou senha incorretos.")
+                            st.error("❌ Seu acesso foi revogado.")
                     else:
-                        st.error("Erro ao acessar base de dados.")
+                        st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
             with st.form("form_cadastro", clear_on_submit=True):
