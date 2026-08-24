@@ -132,83 +132,93 @@ def ler_planilha(aba_nome):
 def salvar_configuracao(email, dados_dict):
     try:
         db.usuarios.update_one(
-            {"_id": email.strip().lower()},
+            {"_id": str(email).strip().lower()},
             {"$set": {
-                "metas.rf": float(dados_dict['RF'].replace(',', '.')),
-                "metas.rv": float(dados_dict['RV'].replace(',', '.')),
-                "metas.br": float(dados_dict['RV_Brasil'].replace(',', '.')),
-                "metas.ex": float(dados_dict['RV_Exterior'].replace(',', '.')),
-                "metas.ac": float(dados_dict['BR_Acoes'].replace(',', '.')),
-                "metas.fii": float(dados_dict['BR_FIIs'].replace(',', '.')),
-                "metas.st": float(dados_dict['EX_Stocks'].replace(',', '.')),
-                "metas.re": float(dados_dict['EX_REITs'].replace(',', '.')),
-                "metas.et": float(dados_dict['EX_ETFs'].replace(',', '.'))
+                "metas.rf": float(str(dados_dict['RF']).replace(',', '.')),
+                "metas.rv": float(str(dados_dict['RV']).replace(',', '.')),
+                "metas.br": float(str(dados_dict['RV_Brasil']).replace(',', '.')),
+                "metas.ex": float(str(dados_dict['RV_Exterior']).replace(',', '.')),
+                "metas.ac": float(str(dados_dict['BR_Acoes']).replace(',', '.')),
+                "metas.fii": float(str(dados_dict['BR_FIIs']).replace(',', '.')),
+                "metas.st": float(str(dados_dict['EX_Stocks']).replace(',', '.')),
+                "metas.re": float(str(dados_dict['EX_REITs']).replace(',', '.')),
+                "metas.et": float(str(dados_dict['EX_ETFs']).replace(',', '.'))
             }},
             upsert=True
         )
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar metas: {e}")
+        st.error(f"Erro ao salvar metas: {str(e)}")
         return False
 
 def salvar_ativos_categoria(email, categoria, df_ativos):
     try:
-        user = db.usuarios.find_one({"_id": email.strip().lower()})
+        user = db.usuarios.find_one({"_id": str(email).strip().lower()})
         ativos_mantidos = []
         if user:
-            ativos_mantidos = [a for a in user.get("ativos", []) if a.get("cat") != categoria.strip()]
+            ativos_mantidos = [a for a in user.get("ativos", []) if a.get("cat") != str(categoria).strip()]
             
         for _, row in df_ativos.iterrows():
             ativo = str(row.get('Ativo', '')).strip().upper()
             val_peso = row.get('Peso') if 'Peso' in df_ativos.columns else row.get('Peso (%)', 0)
             peso = extrair_numero_br(val_peso)
             setor = str(row.get('Setor', '')).strip()
-            if not setor or setor.lower() in ['nan', 'none']: setor = buscar_setor_yahoo(ativo, categoria)
+            if not setor or setor.lower() in ['nan', 'none']: setor = buscar_setor_yahoo(ativo, str(categoria))
             
             if ativo and ativo != "NAN":
-                ativos_mantidos.append({"cat": categoria.strip(), "atv": ativo, "p": float(peso), "set": setor})
+                ativos_mantidos.append({"cat": str(categoria).strip(), "atv": ativo, "p": float(peso), "set": setor})
                 
         db.usuarios.update_one(
-            {"_id": email.strip().lower()},
+            {"_id": str(email).strip().lower()},
             {"$set": {"ativos": ativos_mantidos}},
             upsert=True
         )
         st.cache_data.clear() 
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar ativos: {e}")
+        st.error(f"Erro ao salvar ativos: {str(e)}")
         return False
 
 def registrar_deposito(email, data, valor):
     try:
-        data_val = datetime.strptime(data, "%d/%m/%Y")
+        data_val = datetime.strptime(str(data), "%d/%m/%Y")
         db.transacoes.insert_one({
-            "email": email.strip().lower(), "tipo": "D", "dt": data_val, "val": float(valor)
+            "email": str(email).strip().lower(), 
+            "tipo": "D", 
+            "dt": data_val, 
+            "val": float(valor)
         })
         st.cache_data.clear() 
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar depósito: {e}")
+        st.error(f"Erro ao salvar depósito: {str(e)}")
         return False
 
 def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, observacao=""):
     try:
-        data_val = datetime.strptime(data, "%d/%m/%Y")
+        data_val = datetime.strptime(str(data), "%d/%m/%Y")
         doc = {
-            "email": email.strip().lower(), "tipo": "I", "dt": data_val,
-            "cat": categoria.strip(), "atv": ativo.strip().upper(),
-            "qtd": float(quantidade), "pm": float(preco_medio)
+            "email": str(email).strip().lower(), 
+            "tipo": "I", 
+            "dt": data_val,
+            "cat": str(categoria).strip(), 
+            "atv": str(ativo).strip().upper(),
+            "qtd": float(quantidade), 
+            "pm": float(preco_medio)
         }
-        # Omissão de campo vazio otimizada
-        if observacao.strip(): 
-            doc["obs"] = observacao.strip()
-            
+        
+        # Blindagem extra na observação
+        if observacao is not None:
+            obs_str = str(observacao).strip()
+            if obs_str and obs_str.lower() not in ["nan", "none"]: 
+                doc["obs"] = obs_str
+                
         db.transacoes.insert_one(doc)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar ordem: {e}")
+        st.error(f"Detalhe do erro ao salvar ordem: {str(e)}")
         return False
         
 # ==========================================
