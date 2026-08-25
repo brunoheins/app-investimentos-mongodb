@@ -224,7 +224,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     # ORDENAÇÃO DECRESCENTE PELA COLUNA 'ALVO (%)'
     df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
 
-    # --- 4. ALOCAÇÃO INTELIGENTE (LOGICA ORIGINAL DE DIVISÃO) ---
+    # --- 4. ALOCAÇÃO INTELIGENTE REESCRITA ---
     compras_dict = {}
     aporte_restante = valor_aporte
     df_disp = df_calc[df_calc['Is_Target'] == True].copy()
@@ -239,7 +239,8 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             'Qtd': 0.0,
             'Is_RV': row['Categoria'] in ["Ações", "FIIs", "Stocks", "REITs", "ETFs"],
             'Is_BR': row['Categoria'] in ["Ações", "FIIs"],
-            'Qtd_Alvo': row['ValorAlvo'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 0,
+            # Correção matemática: Ignora o 0 se houver alvo.
+            'Qtd_Alvo': row['ValorAlvo'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 9999,
             'Qtd_Atual': row['TotalAtual_Original'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 0,
             'Falta_Comprar': row['Falta_Comprar']
         }
@@ -253,12 +254,14 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             d = compras_dict[ativo]
             preco = d['PrecoRef']
             
-            if d['Is_RV'] and preco > 0:
-                if d['Is_BR']:
+            # Se for RV, permite o cálculo exato fracionário p/ exterior ou ignorando zero
+            if d['Is_RV']:
+                if d['Is_BR'] and preco > 0:
                     qtd = int(aporte_restante / preco)
                     gasto = qtd * preco
                 else:
-                    qtd = aporte_restante / preco
+                    # Compra fracionada para ativos no exterior
+                    qtd = (aporte_restante / preco) if preco > 0 else 0
                     gasto = aporte_restante
             elif not d['Is_RV']:
                 qtd = 0
@@ -273,11 +276,13 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             aporte_restante -= gasto
 
     else:
-        # Aporte Dividido: Passo 1 - Alocação Proporcional Mágica (ORIGINAL)
-        df_gap = df_disp[df_disp['Falta_Comprar'] > 0]
-        total_gap = df_gap['Falta_Comprar'].sum()
+        # Aporte Dividido: Distribuição Otimizada
+        df_gap = df_disp[df_disp['Falta_Comprar'] > 0].copy()
         
-        if total_gap > 0:
+        # Filtra os ativos que realmente têm gap e força a alocação matemática
+        if not df_gap.empty:
+            total_gap = df_gap['Falta_Comprar'].sum()
+            
             for idx, row in df_gap.iterrows():
                 ativo = row['Ativo']
                 d = compras_dict[ativo]
@@ -285,12 +290,13 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 fator = d['Falta_Comprar'] / total_gap
                 alocacao_teorica = valor_aporte * fator
                 
-                if d['Is_RV'] and preco > 0:
-                    if d['Is_BR']:
+                if d['Is_RV']:
+                    if d['Is_BR'] and preco > 0:
                         qtd = int(alocacao_teorica / preco) 
                         gasto = qtd * preco
                     else:
-                        qtd = alocacao_teorica / preco
+                        # Para Stocks/REITs: Gasta tudo o que foi teoricamente alocado (compra fracionada)
+                        qtd = alocacao_teorica / preco if preco > 0 else 0
                         gasto = alocacao_teorica
                 elif not d['Is_RV']:
                     qtd = 0
@@ -303,6 +309,8 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d['Qtd'] += qtd
                 d['Falta_Comprar'] -= gasto
                 aporte_restante -= gasto
+        
+        # Se todos estiverem na meta, distribui o aporte conforme os pesos globais
         else:
             total_peso = df_disp['PesoGlobal'].sum()
             for idx, row in df_disp.iterrows():
@@ -312,12 +320,12 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 fator = row['PesoGlobal'] / total_peso if total_peso > 0 else 1/len(df_disp)
                 alocacao_teorica = valor_aporte * fator
                 
-                if d['Is_RV'] and preco > 0:
-                    if d['Is_BR']:
+                if d['Is_RV']:
+                    if d['Is_BR'] and preco > 0:
                         qtd = int(alocacao_teorica / preco)
                         gasto = qtd * preco
                     else:
-                        qtd = alocacao_teorica / preco
+                        qtd = alocacao_teorica / preco if preco > 0 else 0
                         gasto = alocacao_teorica
                 elif not d['Is_RV']:
                     qtd = 0
@@ -331,18 +339,18 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d['Falta_Comprar'] -= gasto
                 aporte_restante -= gasto
 
-        # Aporte Dividido: Passo 2 - Otimizador de Trocos (Greedy Original)
+        # Aporte Dividido: Passo 2 - Otimizador de Trocos Reescrito
         comprou_no_loop = True
         while aporte_restante > 0.01 and comprou_no_loop:
             comprou_no_loop = False
+            # Ordena pelos que mais precisam do dinheiro
             ativos_ordenados = sorted(compras_dict.values(), key=lambda x: x['Falta_Comprar'], reverse=True)
             
             for d in ativos_ordenados:
                 preco = d['PrecoRef']
                 if d['Is_RV']:
-                    if preco <= 0: continue
                     if d['Is_BR']:
-                        if aporte_restante >= preco:
+                        if preco > 0 and aporte_restante >= preco:
                             d['Valor'] += preco
                             d['Qtd'] += 1
                             d['Falta_Comprar'] -= preco
@@ -350,18 +358,22 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                             comprou_no_loop = True
                             break 
                     else:
+                        # Troco vai integralmente para a RV fracionada (Stocks/REITs)
+                        if d['Falta_Comprar'] > 0:
+                            d['Valor'] += aporte_restante
+                            if preco > 0: d['Qtd'] += aporte_restante / preco
+                            d['Falta_Comprar'] -= aporte_restante
+                            aporte_restante = 0
+                            comprou_no_loop = True
+                            break
+                else:
+                    # Se tudo falhar (nenhum gap em RV), joga pra RF
+                    if d['Categoria'] == 'Renda Fixa' and d['Falta_Comprar'] > 0:
                         d['Valor'] += aporte_restante
-                        d['Qtd'] += aporte_restante / preco
                         d['Falta_Comprar'] -= aporte_restante
                         aporte_restante = 0
                         comprou_no_loop = True
                         break
-                else:
-                    d['Valor'] += aporte_restante
-                    d['Falta_Comprar'] -= aporte_restante
-                    aporte_restante = 0
-                    comprou_no_loop = True
-                    break
 
     # --- 5. MONTAGEM FINAL DO EXTRATO DE COMPRAS ---
     compras = []
@@ -371,13 +383,13 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             qtd_sugerida_str = "-"
             qtd_faltante_str = "-"
             if d['Is_RV']:
-                qtd_faltante = max(0, d['Qtd_Alvo'] - d['Qtd_Atual'])
+                qtd_faltante = max(0, d['Qtd_Alvo'] - d['Qtd_Atual']) if d['Qtd_Alvo'] != 9999 else 0
                 if d['Is_BR']:
                     qtd_sugerida_str = f"{int(d['Qtd'])} un"
-                    qtd_faltante_str = f"{int(qtd_faltante)} un"
+                    qtd_faltante_str = f"{int(qtd_faltante)} un" if qtd_faltante > 0 else "-"
                 else:
                     qtd_sugerida_str = f"{d['Qtd']:.4f} un".replace('.', ',')
-                    qtd_faltante_str = f"{qtd_faltante:.4f} un".replace('.', ',')
+                    qtd_faltante_str = f"{qtd_faltante:.4f} un".replace('.', ',') if qtd_faltante > 0 else "-"
                     
             compras.append({
                 'Ordem': ordem,
