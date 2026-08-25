@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 from utils import ler_planilha, registrar_novo_usuario, db
 
 # A configuração da página DEVE ser a primeira linha do app
@@ -18,13 +19,16 @@ st.markdown("""
 # Importando as telas
 from menu import resumo, saldo, aportes, configuracao, lancamentos, perfil, backup, dividendos, imposto
 
-# Variáveis Globais de Sessão
+# Variáveis Globais de Sessão e Defesas de Segurança
 if 'logado' not in st.session_state:
     st.session_state.logado = False
     st.session_state.email = ""
     st.session_state.nome = ""
     st.session_state.codigo_recuperacao = None
     st.session_state.email_recuperacao = None
+    # Travas de tempo (Antispam e Anti-Força Bruta)
+    st.session_state.last_login_time = 0.0
+    st.session_state.last_email_time = 0.0
 
 
 # ==========================================
@@ -45,29 +49,33 @@ def tela_acesso():
                 submit_login = st.form_submit_button("Entrar", use_container_width=True)
                 
                 if submit_login:
-                    # NOVA BUSCA OTIMIZADA DIRETO NO BANCO V2 (Ignora cache e usa o _id)
-                    email_formatado = email_input.strip().lower()
-                    senha_formatada = senha_input.strip()
-                    
-                    # Busca exatamente o _id (email) e a senha no MongoDB em milissegundos
-                    usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
-                    
-                    if usuario:
-                        status_usuario = str(usuario.get('status', 'Pendente')).strip()
-                        if status_usuario == 'Ativo':
-                            st.session_state.logado = True
-                            st.session_state.email = email_formatado
-                            st.session_state.nome = usuario.get('nome', 'Usuário')
-                            
-                            # Limpa o cache do sistema ao logar para garantir dados frescos
-                            st.cache_data.clear() 
-                            st.rerun()
-                        elif status_usuario == 'Pendente':
-                            st.warning("⏳ Seu cadastro está em análise pelo administrador.")
-                        else:
-                            st.error("❌ Seu acesso foi revogado.")
+                    agora = time.time()
+                    # Defesa: Cooldown de 3 segundos para evitar força bruta de senhas
+                    if agora - st.session_state.last_login_time < 3:
+                        st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
                     else:
-                        st.error("❌ Usuário ou senha incorretos.")
+                        st.session_state.last_login_time = agora
+                        
+                        email_formatado = email_input.strip().lower()
+                        senha_formatada = senha_input.strip()
+                        
+                        usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
+                        
+                        if usuario:
+                            status_usuario = str(usuario.get('status', 'Pendente')).strip()
+                            if status_usuario == 'Ativo':
+                                st.session_state.logado = True
+                                st.session_state.email = email_formatado
+                                st.session_state.nome = usuario.get('nome', 'Usuário')
+                                
+                                st.cache_data.clear() 
+                                st.rerun()
+                            elif status_usuario == 'Pendente':
+                                st.warning("⏳ Seu cadastro está em análise pelo administrador.")
+                            else:
+                                st.error("❌ Seu acesso foi revogado.")
+                        else:
+                            st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
             with st.form("form_cadastro", clear_on_submit=True):
@@ -92,9 +100,17 @@ def tela_acesso():
                     esq_email = st.text_input("E-mail Cadastrado")
                     
                     if st.form_submit_button("Enviar Código", use_container_width=True):
-                        if not esq_email:
+                        agora = time.time()
+                        tempo_restante = 60 - (agora - st.session_state.last_email_time)
+                        
+                        # Defesa: Cooldown de 60 segundos para evitar Spam de E-mail
+                        if tempo_restante > 0:
+                            st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
+                        elif not esq_email:
                             st.warning("Preencha o campo de e-mail.")
                         else:
+                            # Registra o momento exato em que o e-mail foi liberado para envio
+                            st.session_state.last_email_time = agora
                             with st.spinner("Enviando e-mail..."):
                                 from utils import verificar_email_cadastrado, enviar_codigo_email
                                 import random, string
@@ -141,15 +157,11 @@ def tela_acesso():
 # ROTEAMENTO NATIVO (ST.NAVIGATION)
 # ==========================================
 if not st.session_state.logado:
-    # Oculta o menu lateral enquanto não estiver logado
     st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
-    
-    # Define o login como a única página existente
     pg = st.navigation([st.Page(tela_acesso, title="Acesso Restrito", url_path="login")])
     pg.run()
     
 else:
-    # 1. Mapeamento nativo ajustado para o fluxo Operacional
     pg = st.navigation({
         f"Usuário: {st.session_state.nome}": [
             st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")
@@ -168,11 +180,9 @@ else:
         ]
     })
     
-    # 2. Executa a construção do menu lateral primeiro
     pg.run()
 
-    # 3. Adiciona o botão de logout logo abaixo do menu nativo com a correção (if em vez de callback)
-    st.sidebar.markdown("<br><br>", unsafe_allow_html=True) # Espaçamento para o botão não ficar colado
+    st.sidebar.markdown("<br><br>", unsafe_allow_html=True) 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
