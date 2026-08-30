@@ -179,6 +179,8 @@ def painel_admin():
     st.title("🛠️ Painel do Administrador")
     st.markdown("Selecione um usuário abaixo para visualizar o sistema como se fosse ele. Suas permissões de alteração de dados sensíveis continuarão bloqueadas.")
     
+    st.info("💡 **Dica:** Você não precisa rolar a lista! Basta clicar na caixa abaixo e **começar a digitar** o nome ou e-mail.")
+    
     from utils import listar_todos_usuarios
     lista_users = listar_todos_usuarios()
     
@@ -188,7 +190,7 @@ def painel_admin():
         current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
         
         escolha = st.selectbox(
-            "Selecione a conta para impersonar:", 
+            "🔎 Buscar usuário:", 
             options=emails_list, 
             format_func=lambda x: opcoes[x],
             index=current_idx
@@ -234,7 +236,6 @@ else:
     
     pg.run()
 
-    # O Streamlit cuidará sozinho da linha acima do botão
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
