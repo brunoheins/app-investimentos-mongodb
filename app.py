@@ -20,7 +20,7 @@ st.markdown("""
         p, div, span, label { font-size: 0.95rem !important; }
         
         /* 3. ESPREME A BARRA LATERAL AO MÁXIMO */
-        [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; }
+        [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; transition: background-color 0.3s ease; }
         [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
         
         /* Reduz o espaço entre os botões de navegação */
@@ -213,6 +213,22 @@ if not st.session_state.logado:
 else:
     if not st.session_state.get('is_admin', False):
         st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
+
+    # =========================================================
+    # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN/IMPERSONAÇÃO
+    # =========================================================
+    if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
+        st.markdown("""
+            <style>
+                /* Muda o fundo do menu lateral para um vermelho escuro elegante */
+                [data-testid="stSidebar"] {
+                    background-color: #3b0a0a !important;
+                    border-right: 2px solid #ff4444 !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        # Adiciona um aviso vermelho fixo no topo do menu lateral
+        st.sidebar.error(f"⚠️ **MODO ADMIN**\n\nVendo como:\n**{st.session_state.nome}**")
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
