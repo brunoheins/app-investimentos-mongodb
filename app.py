@@ -80,7 +80,7 @@ def tela_acesso():
                         usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
                         
                         if usuario:
-                            status_usuario = str(usuario.get('status', 'Pendente')).strip()
+                            status_usuario = str(usuario.get('status', 'Pendente')).strip().capitalize()
                             if status_usuario == 'Ativo':
                                 st.session_state.logado = True
                                 st.session_state.email = email_formatado
@@ -188,6 +188,14 @@ def painel_admin():
             df_users = pd.DataFrame(usuarios)
             df_users.rename(columns={"_id": "Email", "nome": "Nome", "status": "Status"}, inplace=True)
             
+            # --- BLINDAGEM DO ERRO (NORMALIZAÇÃO DE TEXTO) ---
+            if 'Status' not in df_users.columns:
+                df_users['Status'] = 'Pendente'
+            
+            # Garante que o texto fique limpo (ex: "ativo" vira "Ativo") e padroniza falhas
+            df_users['Status'] = df_users['Status'].fillna('Pendente').astype(str).str.strip().str.capitalize()
+            df_users['Status'] = df_users['Status'].apply(lambda x: x if x in ["Ativo", "Revogado", "Pendente"] else "Pendente")
+            
             # --- PENDENTES ---
             st.markdown("<br>**⏳ Aguardando Liberação**", unsafe_allow_html=True)
             pendentes = df_users[df_users['Status'] == 'Pendente']
@@ -212,13 +220,13 @@ def painel_admin():
             outros = df_users[df_users['Status'] != 'Pendente']
             
             for _, row in outros.iterrows():
-                # Proteção para o Admin não revogar o próprio acesso sem querer
                 if row['Email'] == st.session_state.get('admin_email'): 
                     continue 
                 
                 c_info, c_status = st.columns([3, 2])
                 c_info.markdown(f"{row['Nome']} <span style='color:gray; font-size:0.85em;'>({row['Email']})</span>", unsafe_allow_html=True)
                 
+                # Agora o row['Status'] sempre terá os nomes corretos graças à blindagem acima
                 novo_status = c_status.selectbox(
                     "Status", 
                     options=["Ativo", "Revogado", "Pendente"], 
@@ -228,6 +236,7 @@ def painel_admin():
                 )
                 
                 if novo_status != row['Status']:
+                    # O banco salva a string com a mesma capitalização "Ativo", "Pendente", "Revogado"
                     db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": novo_status}})
                     st.rerun()
                     
