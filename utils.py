@@ -65,7 +65,7 @@ def ler_planilha(aba_nome):
             df = pd.DataFrame(usuarios)
             df.rename(columns={"_id": "Email", "senha": "Senha", "nome": "Nome", "status": "Status"}, inplace=True)
             return df
-            
+
         elif aba_nome == "Configuracao":
             usuarios = list(db.usuarios.find({}, {"_id": 1, "metas": 1}))
             linhas = []
@@ -80,7 +80,7 @@ def ler_planilha(aba_nome):
                     })
             if not linhas: return pd.DataFrame(columns=['Email', 'RF', 'RV', 'RV_Brasil', 'RV_Exterior', 'BR_Acoes', 'BR_FIIs', 'EX_Stocks', 'EX_REITs', 'EX_ETFs'])
             return pd.DataFrame(linhas)
-            
+
         elif aba_nome == "Ativos_Config":
             usuarios = list(db.usuarios.find({}, {"_id": 1, "ativos": 1}))
             linhas = []
@@ -92,7 +92,7 @@ def ler_planilha(aba_nome):
                     })
             if not linhas: return pd.DataFrame(columns=['Email', 'Categoria', 'Ativo', 'Peso', 'Setor'])
             return pd.DataFrame(linhas)
-            
+
         elif aba_nome == "Depositos":
             txs = list(db.transacoes.find({"tipo": "D"}, {"_id": 0}))
             linhas = []
@@ -104,7 +104,7 @@ def ler_planilha(aba_nome):
                 })
             if not linhas: return pd.DataFrame(columns=['Email', 'Data', 'Valor'])
             return pd.DataFrame(linhas)
-            
+
         elif aba_nome == "Investimentos":
             txs = list(db.transacoes.find({"tipo": "I"}, {"_id": 0}))
             linhas = []
@@ -116,11 +116,11 @@ def ler_planilha(aba_nome):
                     "Ativo": t.get("atv"),
                     "Quantidade": t.get("qtd"),
                     "PrecoMedio": t.get("pm"),
-                    "Observacao": t.get("obs", "") # Usa .get com default vazio para tratar omissão
+                    "Observacao": t.get("obs", "")
                 })
             if not linhas: return pd.DataFrame(columns=['Email', 'DataCompra', 'Categoria', 'Ativo', 'Quantidade', 'PrecoMedio', 'Observacao'])
             return pd.DataFrame(linhas)
-            
+
         return pd.DataFrame()
     except Exception as e:
         st.error(f"Erro ao ler a tabela '{aba_nome}': {e}")
@@ -158,17 +158,17 @@ def salvar_ativos_categoria(email, categoria, df_ativos):
         ativos_mantidos = []
         if user:
             ativos_mantidos = [a for a in user.get("ativos", []) if a.get("cat") != str(categoria).strip()]
-            
+
         for _, row in df_ativos.iterrows():
             ativo = str(row.get('Ativo', '')).strip().upper()
             val_peso = row.get('Peso') if 'Peso' in df_ativos.columns else row.get('Peso (%)', 0)
             peso = extrair_numero_br(val_peso)
             setor = str(row.get('Setor', '')).strip()
             if not setor or setor.lower() in ['nan', 'none']: setor = buscar_setor_yahoo(ativo, str(categoria))
-            
+
             if ativo and ativo != "NAN":
                 ativos_mantidos.append({"cat": str(categoria).strip(), "atv": ativo, "p": float(peso), "set": setor})
-                
+
         db.usuarios.update_one(
             {"_id": str(email).strip().lower()},
             {"$set": {"ativos": ativos_mantidos}},
@@ -207,20 +207,19 @@ def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, obs
             "qtd": float(quantidade), 
             "pm": float(preco_medio)
         }
-        
-        # Blindagem extra na observação
+
         if observacao is not None:
             obs_str = str(observacao).strip()
             if obs_str and obs_str.lower() not in ["nan", "none"]: 
                 doc["obs"] = obs_str
-                
+
         db.transacoes.insert_one(doc)
         st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Detalhe do erro ao salvar ordem: {str(e)}")
         return False
-        
+
 # ==========================================
 # 5. GERENCIADOR DE EDIÇÃO E BACKUP (AUDITORIA)
 # ==========================================
@@ -238,7 +237,7 @@ def atualizar_historico_usuario(email, nome_aba, df_editado):
                             "email": e_lower, "tipo": "D", "dt": d, "val": extrair_numero_br(row.get("Valor"))
                         })
                 if novos: db.transacoes.insert_many(novos)
-                
+
         elif nome_aba == "Investimentos":
             db.transacoes.delete_many({"email": e_lower, "tipo": "I"})
             if not df_editado.empty:
@@ -256,7 +255,7 @@ def atualizar_historico_usuario(email, nome_aba, df_editado):
                             doc["obs"] = obs
                         novos.append(doc)
                 if novos: db.transacoes.insert_many(novos)
-        
+
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -280,19 +279,19 @@ def inserir_lote_registros(nome_aba, df):
     try:
         email = df['Email'].iloc[0].strip().lower() if 'Email' in df.columns else ""
         if not email: return False, "E-mail não encontrado no lote."
-        
+
         if nome_aba in ["Depositos", "Investimentos"]:
             atualizar_historico_usuario(email, nome_aba, df)
-            
+
         elif nome_aba == "Configuracao":
             dados = df.iloc[0].to_dict()
             salvar_configuracao(email, dados)
-            
+
         elif nome_aba == "Ativos_Config":
             for cat in df['Categoria'].unique():
                 df_cat = df[df['Categoria'] == cat]
                 salvar_ativos_categoria(email, cat, df_cat)
-                
+
         st.cache_data.clear()
         return True, "Sucesso"
     except Exception as e:
@@ -306,13 +305,13 @@ def registrar_novo_usuario(nome, email, senha):
         email_lower = email.strip().lower()
         if db.usuarios.count_documents({"_id": email_lower}) > 0:
             return False, "⚠️ Este e-mail já está cadastrado. Caso não se recorde da senha, vá em 'Esqueci a Senha'."
-            
+
         novo_usuario = {"_id": email_lower, "senha": senha, "nome": nome.strip(), "status": "Pendente", "metas": {}, "ativos": []}
         db.usuarios.insert_one(novo_usuario)
         st.cache_data.clear()
         return True, "✅ Cadastro enviado com sucesso! Aguarde a liberação."
     except Exception as e: return False, f"Erro ao cadastrar: {e}"
-        
+
 def verificar_email_cadastrado(email):
     try: return db.usuarios.count_documents({"_id": email.strip().lower()}) > 0
     except: return False
@@ -332,7 +331,7 @@ def atualizar_dados_perfil(email, novo_nome, nova_senha):
         if novo_nome: atualizacoes["nome"] = novo_nome.strip()
         if nova_senha: atualizacoes["senha"] = nova_senha
         if not atualizacoes: return True, "Nada a atualizar."
-        
+
         res = db.usuarios.update_one({"_id": email.strip().lower()}, {"$set": atualizacoes})
         if res.matched_count > 0:
             st.cache_data.clear()
@@ -348,7 +347,7 @@ def enviar_codigo_email(email_destino, codigo):
         msg['From'], msg['To'], msg['Subject'] = remetente, email_destino, "🔒 Código de Recuperação de Senha - App Investimentos"
         corpo = f"Olá!\n\nVocê solicitou a recuperação de senha no seu App de Investimentos.\n\nSeu código de segurança é: {codigo}\n\nSe você não solicitou esta alteração, apenas ignore este e-mail."
         msg.attach(MIMEText(corpo, 'plain'))
-        
+
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(remetente, senha_app)
@@ -443,7 +442,7 @@ def obter_cotacoes():
                 nome_original = mapa_ativos[titulo["nome"]]
                 cotacoes[nome_original] = titulo["valor"]
                 ativos_ja_encontrados.add(nome_original)
-                
+
         ativos_buscados = ativos_buscados - ativos_ja_encontrados
         if ativos_buscados:
             tickers_yf, mapa_tickers, tem_exterior = [], {}, False
@@ -466,7 +465,7 @@ def obter_cotacoes():
                     else:
                         col = 'Close' if 'Close' in df_raw.columns else 'Adj Close'
                         if col in df_raw.columns: df_prices = df_raw[[col]].copy(); df_prices.columns = [tickers_yf[0]]
-                    
+
                     if isinstance(df_prices, pd.Series): df_prices = df_prices.to_frame(name=tickers_yf[0])
                     if not df_prices.empty:
                         cotacao_dolar = float(df_prices["BRL=X"].iloc[-1]) if tem_exterior and "BRL=X" in df_prices.columns else 1.0
@@ -506,3 +505,13 @@ def obter_ativos_por_categoria(email_usuario):
         for cat in cat_dict: cat_dict[cat].sort()
         return {categoria: ativos for categoria, ativos in cat_dict.items() if len(ativos) > 0}
     except: return {categoria: ativos for categoria, ativos in cat_dict.items() if len(ativos) > 0}
+
+# ==========================================
+# 8. ADMIN / IMPERSONAÇÃO
+# ==========================================
+def listar_todos_usuarios():
+    try:
+        usuarios = list(db.usuarios.find({}, {"_id": 1, "nome": 1}))
+        return [{"email": u["_id"], "nome": u.get("nome", "Sem Nome")} for u in usuarios]
+    except Exception as e:
+        return []
