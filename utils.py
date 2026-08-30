@@ -19,9 +19,7 @@ from datetime import datetime
 def init_connection():
     try:
         uri = st.secrets["MONGO_URI"]
-        # Usamos certifi para blindar contra bloqueios de rede/firewalls (ex: Zscaler)
         client = MongoClient(uri, server_api=ServerApi('1'), tlsCAFile=certifi.where())
-        # CONECTANDO AO BANCO OTIMIZADO V2
         return client['app_v2']
     except Exception as e:
         st.error(f"Erro ao conectar com o MongoDB: {e}")
@@ -53,13 +51,8 @@ def formata_br(valor):
 # ==========================================
 @st.cache_data(ttl=300, show_spinner=False)
 def ler_planilha(aba_nome):
-    """
-    Traduz os dados compactados da V2 de volta para o formato de planilhas 
-    que o resto do aplicativo (gráficos, menus) já está acostumado a ler.
-    """
     try:
         if aba_nome == "Usuarios":
-            # Busca pelo _id ao invés de email
             usuarios = list(db.usuarios.find({}, {"_id": 1, "senha": 1, "nome": 1, "status": 1}))
             if not usuarios: return pd.DataFrame(columns=['Email', 'Senha', 'Nome', 'Status'])
             df = pd.DataFrame(usuarios)
@@ -149,7 +142,6 @@ def salvar_configuracao(email, dados_dict):
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar metas: {str(e)}")
         return False
 
 def salvar_ativos_categoria(email, categoria, df_ativos):
@@ -177,47 +169,33 @@ def salvar_ativos_categoria(email, categoria, df_ativos):
         st.cache_data.clear() 
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar ativos: {str(e)}")
         return False
 
 def registrar_deposito(email, data, valor):
     try:
         data_val = datetime.strptime(str(data), "%d/%m/%Y")
-        db.transacoes.insert_one({
-            "email": str(email).strip().lower(), 
-            "tipo": "D", 
-            "dt": data_val, 
-            "val": float(valor)
-        })
+        db.transacoes.insert_one({"email": str(email).strip().lower(), "tipo": "D", "dt": data_val, "val": float(valor)})
         st.cache_data.clear() 
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar depósito: {str(e)}")
         return False
 
 def registrar_compra(email, data, categoria, ativo, quantidade, preco_medio, observacao=""):
     try:
         data_val = datetime.strptime(str(data), "%d/%m/%Y")
         doc = {
-            "email": str(email).strip().lower(), 
-            "tipo": "I", 
-            "dt": data_val,
-            "cat": str(categoria).strip(), 
-            "atv": str(ativo).strip().upper(),
-            "qtd": float(quantidade), 
-            "pm": float(preco_medio)
+            "email": str(email).strip().lower(), "tipo": "I", "dt": data_val,
+            "cat": str(categoria).strip(), "atv": str(ativo).strip().upper(),
+            "qtd": float(quantidade), "pm": float(preco_medio)
         }
-
         if observacao is not None:
             obs_str = str(observacao).strip()
-            if obs_str and obs_str.lower() not in ["nan", "none"]: 
-                doc["obs"] = obs_str
+            if obs_str and obs_str.lower() not in ["nan", "none"]: doc["obs"] = obs_str
 
         db.transacoes.insert_one(doc)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Detalhe do erro ao salvar ordem: {str(e)}")
         return False
 
 # ==========================================
@@ -232,10 +210,7 @@ def atualizar_historico_usuario(email, nome_aba, df_editado):
                 novos = []
                 for _, row in df_editado.iterrows():
                     d = pd.to_datetime(row.get("Data"), errors='coerce', dayfirst=True)
-                    if pd.notna(d):
-                        novos.append({
-                            "email": e_lower, "tipo": "D", "dt": d, "val": extrair_numero_br(row.get("Valor"))
-                        })
+                    if pd.notna(d): novos.append({"email": e_lower, "tipo": "D", "dt": d, "val": extrair_numero_br(row.get("Valor"))})
                 if novos: db.transacoes.insert_many(novos)
 
         elif nome_aba == "Investimentos":
@@ -245,21 +220,15 @@ def atualizar_historico_usuario(email, nome_aba, df_editado):
                 for _, row in df_editado.iterrows():
                     d = pd.to_datetime(row.get("DataCompra"), errors='coerce', dayfirst=True)
                     if pd.notna(d):
-                        doc = {
-                            "email": e_lower, "tipo": "I", "dt": d, 
-                            "cat": str(row.get("Categoria")), "atv": str(row.get("Ativo")).upper(),
-                            "qtd": extrair_numero_br(row.get("Quantidade")), "pm": extrair_numero_br(row.get("PrecoMedio"))
-                        }
+                        doc = {"email": e_lower, "tipo": "I", "dt": d, "cat": str(row.get("Categoria")), "atv": str(row.get("Ativo")).upper(), "qtd": extrair_numero_br(row.get("Quantidade")), "pm": extrair_numero_br(row.get("PrecoMedio"))}
                         obs = str(row.get("Observacao", "")).strip()
-                        if obs and obs.lower() not in ["nan", "none"]:
-                            doc["obs"] = obs
+                        if obs and obs.lower() not in ["nan", "none"]: doc["obs"] = obs
                         novos.append(doc)
                 if novos: db.transacoes.insert_many(novos)
 
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar edição: {e}")
         return False
 
 def deletar_registros_usuario(nome_aba, email):
@@ -280,17 +249,10 @@ def inserir_lote_registros(nome_aba, df):
         email = df['Email'].iloc[0].strip().lower() if 'Email' in df.columns else ""
         if not email: return False, "E-mail não encontrado no lote."
 
-        if nome_aba in ["Depositos", "Investimentos"]:
-            atualizar_historico_usuario(email, nome_aba, df)
-
-        elif nome_aba == "Configuracao":
-            dados = df.iloc[0].to_dict()
-            salvar_configuracao(email, dados)
-
+        if nome_aba in ["Depositos", "Investimentos"]: atualizar_historico_usuario(email, nome_aba, df)
+        elif nome_aba == "Configuracao": salvar_configuracao(email, df.iloc[0].to_dict())
         elif nome_aba == "Ativos_Config":
-            for cat in df['Categoria'].unique():
-                df_cat = df[df['Categoria'] == cat]
-                salvar_ativos_categoria(email, cat, df_cat)
+            for cat in df['Categoria'].unique(): salvar_ativos_categoria(email, cat, df[df['Categoria'] == cat])
 
         st.cache_data.clear()
         return True, "Sucesso"
@@ -303,14 +265,11 @@ def inserir_lote_registros(nome_aba, df):
 def registrar_novo_usuario(nome, email, senha):
     try:
         email_lower = email.strip().lower()
-        if db.usuarios.count_documents({"_id": email_lower}) > 0:
-            return False, "⚠️ Este e-mail já está cadastrado. Caso não se recorde da senha, vá em 'Esqueci a Senha'."
-
-        novo_usuario = {"_id": email_lower, "senha": senha, "nome": nome.strip(), "status": "Pendente", "metas": {}, "ativos": []}
-        db.usuarios.insert_one(novo_usuario)
+        if db.usuarios.count_documents({"_id": email_lower}) > 0: return False, "⚠️ Este e-mail já está cadastrado."
+        db.usuarios.insert_one({"_id": email_lower, "senha": senha, "nome": nome.strip(), "status": "Pendente", "metas": {}, "ativos": []})
         st.cache_data.clear()
-        return True, "✅ Cadastro enviado com sucesso! Aguarde a liberação."
-    except Exception as e: return False, f"Erro ao cadastrar: {e}"
+        return True, "✅ Cadastro enviado com sucesso!"
+    except Exception as e: return False, f"Erro: {e}"
 
 def verificar_email_cadastrado(email):
     try: return db.usuarios.count_documents({"_id": email.strip().lower()}) > 0
@@ -321,7 +280,7 @@ def redefinir_senha_aprovada(email, nova_senha):
         res = db.usuarios.update_one({"_id": email.strip().lower()}, {"$set": {"senha": nova_senha}})
         if res.matched_count > 0:
             st.cache_data.clear()
-            return True, "✅ Senha alterada com sucesso! Você já pode fazer login."
+            return True, "✅ Senha alterada!"
         return False, "Usuário não encontrado."
     except Exception as e: return False, f"Erro: {e}"
 
@@ -335,7 +294,7 @@ def atualizar_dados_perfil(email, novo_nome, nova_senha):
         res = db.usuarios.update_one({"_id": email.strip().lower()}, {"$set": atualizacoes})
         if res.matched_count > 0:
             st.cache_data.clear()
-            return True, "✅ Perfil atualizado com sucesso!"
+            return True, "✅ Perfil atualizado!"
         return False, "Usuário não encontrado."
     except Exception as e: return False, f"Erro: {e}"
 
@@ -344,16 +303,14 @@ def enviar_codigo_email(email_destino, codigo):
         remetente = st.secrets["email"]["endereco"]
         senha_app = st.secrets["email"]["senha_app"]
         msg = MIMEMultipart()
-        msg['From'], msg['To'], msg['Subject'] = remetente, email_destino, "🔒 Código de Recuperação de Senha - App Investimentos"
-        corpo = f"Olá!\n\nVocê solicitou a recuperação de senha no seu App de Investimentos.\n\nSeu código de segurança é: {codigo}\n\nSe você não solicitou esta alteração, apenas ignore este e-mail."
-        msg.attach(MIMEText(corpo, 'plain'))
-
+        msg['From'], msg['To'], msg['Subject'] = remetente, email_destino, "🔒 Código de Recuperação de Senha"
+        msg.attach(MIMEText(f"Seu código: {codigo}", 'plain'))
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(remetente, senha_app)
         server.send_message(msg)
         server.quit()
-        return True, "E-mail enviado com sucesso!"
+        return True, "Enviado!"
     except Exception as e: return False, f"Erro: {e}"
 
 # ==========================================
@@ -401,17 +358,20 @@ def obter_cotacoes():
     try:
         if 'email' in st.session_state:
             email_usuario = st.session_state.email.strip().lower()
+            
+            # Lê as duas abas
             df_invest = ler_planilha("Investimentos")
+            df_config = ler_planilha("Ativos_Config")
+            
             if not df_invest.empty:
                 for _, row in df_invest[df_invest['Email'].astype(str).str.lower() == email_usuario].iterrows():
                     ativo = str(row.get('Ativo', '')).strip().upper()
                     if ativo and ativo not in ["NAN", "NONE", ""]:
                         ativos_buscados.add(ativo)
-                        # Preenche provisoriamente com o Preço Médio (Fallback se o YF cair)
+                        # Fallback (Preço Médio) se não achar a cotação
                         pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
                         if pm > 0 and ativo not in cotacoes: cotacoes[ativo] = pm
 
-            df_config = ler_planilha("Ativos_Config")
             if not df_config.empty:
                 for _, row in df_config[df_config['Email'].astype(str).str.lower() == email_usuario].iterrows():
                     ativo = str(row.get('Ativo', '')).strip().upper()
@@ -419,7 +379,9 @@ def obter_cotacoes():
 
         if not ativos_buscados: return cotacoes
         
+        # -----------------------------------
         # BUSCA TESOURO DIRETO
+        # -----------------------------------
         titulos_tesouro = []
         try:
             df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
@@ -430,13 +392,7 @@ def obter_cotacoes():
                 nome_limpo = " ".join(str(row[col_titulo]).upper().split())
                 if nome_limpo and nome_limpo != "NAN": titulos_tesouro.append({"nome": nome_limpo, "valor": extrair_numero_br(row[col_preco])})
         except:
-            try:
-                res_td2 = requests.get("https://tesouro.gabriso.com/bonds", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-                if res_td2.status_code == 200:
-                    for bond in res_td2.json().get("bonds", []):
-                        nome_limpo = " ".join(str(bond.get("name", "")).upper().split())
-                        titulos_tesouro.append({"nome": nome_limpo, "valor": float(bond.get("unitary_redemption_value", 0.0))})
-            except: pass
+            pass
 
         mapa_ativos = {" ".join(a.upper().split()): a for a in ativos_buscados}
         ativos_ja_encontrados = set()
@@ -448,61 +404,88 @@ def obter_cotacoes():
 
         ativos_buscados = ativos_buscados - ativos_ja_encontrados
         
-        # BUSCA YAHOO FINANCE
+        # -----------------------------------
+        # BUSCA YAHOO FINANCE (NOVO MOTOR V3)
+        # -----------------------------------
         if ativos_buscados:
             tickers_yf, mapa_tickers, tem_exterior = [], {}, False
+            
             for ativo in ativos_buscados:
                 ticker = ativo
-                if "." not in ticker and re.search(r'\d+$', ticker): ticker = f"{ticker}.SA"
+                # REGRA UNIVERSAL: Se não tem ponto e termina com número (ex: BOVA11, CPFE3), é do Brasil. 
+                # Isso previne que ETFs brasileiros sejam tratados como ativos dos EUA e multiplicados por R$5.50
+                if "." not in ticker and re.search(r'\d+$', ticker): 
+                    ticker = f"{ticker}.SA"
+                    
                 if not ticker.endswith(".SA"): tem_exterior = True
+                    
                 tickers_yf.append(ticker)
                 mapa_tickers[ticker] = ativo 
 
             if tem_exterior: tickers_yf.append("BRL=X")
             
             try:
-                # Mudança Crucial: period="5d" para contornar o fim de semana e feriados
-                df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False, ignore_tz=True)
+                # 5 dias para garantir que pulamos feriados e finais de semana
+                df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False)
                 
                 if not df_raw.empty:
-                    df_prices = pd.DataFrame()
+                    # Pega a última linha válida (último pregão fechado)
+                    s_last = df_raw.ffill().iloc[-1]
                     
-                    # Tratamento das colunas MultiIndex das novas versões do yfinance
-                    if isinstance(df_raw.columns, pd.MultiIndex):
-                        for col_type in ['Adj Close', 'Close']:
-                            if col_type in df_raw.columns.get_level_values(0): 
-                                df_prices = df_raw[col_type]
-                                break
-                            elif col_type in df_raw.columns.get_level_values(1): 
-                                df_prices = df_raw.xs(col_type, axis=1, level=1)
-                                break
-                    else:
-                        col = 'Adj Close' if 'Adj Close' in df_raw.columns else 'Close'
-                        if col in df_raw.columns: 
-                            df_prices = df_raw[[col]].copy()
-                            df_prices.columns = [tickers_yf[0]]
+                    # Passo 1: Descobrir o preço do Dólar
+                    cotacao_dolar = 1.0
+                    if tem_exterior:
+                        for p_col in ['Close', 'Adj Close']:
+                            # Se for o formato MultiIndex novo do yfinance
+                            if isinstance(s_last.index, pd.MultiIndex):
+                                if (p_col, "BRL=X") in s_last.index:
+                                    cotacao_dolar = float(s_last[(p_col, "BRL=X")])
+                                    break
+                                elif ("BRL=X", p_col) in s_last.index:
+                                    cotacao_dolar = float(s_last[("BRL=X", p_col)])
+                                    break
+                            else:
+                                # Se a API retornou o formato antigo/flat (1 único ativo válido)
+                                if "BRL=X" in tickers_yf and len(set(tickers_yf)) == 1:
+                                    cotacao_dolar = float(s_last.get(p_col, 1.0))
+                                    break
 
-                    if isinstance(df_prices, pd.Series): 
-                        df_prices = df_prices.to_frame(name=tickers_yf[0])
+                    # Passo 2: Descobrir o preço dos Ativos
+                    for ticker in tickers_yf:
+                        if ticker == "BRL=X": continue
                         
-                    if not df_prices.empty:
-                        # Preenche vazios (feriados parciais) e pega a última linha (último pregão)
-                        s_last = df_prices.ffill().iloc[-1]
+                        preco = None
+                        for p_col in ['Close', 'Adj Close']:
+                            # Leitura MultiIndex
+                            if isinstance(s_last.index, pd.MultiIndex):
+                                if (p_col, ticker) in s_last.index:
+                                    preco = s_last[(p_col, ticker)]
+                                    break
+                                elif (ticker, p_col) in s_last.index:
+                                    preco = s_last[(ticker, p_col)]
+                                    break
+                            else:
+                                # Leitura Flat: verifica se foi o único ativo pesquisado
+                                ativos_pedidos = set([t for t in tickers_yf if t != "BRL=X"])
+                                if len(ativos_pedidos) == 1:
+                                    preco = s_last.get(p_col)
+                                    break
                         
-                        cotacao_dolar = float(s_last.get("BRL=X", 1.0)) if tem_exterior else 1.0
-                        
-                        for ticker in tickers_yf:
-                            if ticker == "BRL=X": continue
-                            if ticker in s_last.index and pd.notna(s_last[ticker]):
-                                preco = float(s_last[ticker])
-                                # Sobrescreve o Preço Médio (Fallback) pelo Preço Real de Mercado
-                                cotacoes[mapa_tickers[ticker]] = preco * cotacao_dolar if not ticker.endswith(".SA") else preco
+                        # Se encontrou o preço e não é nulo, atualiza o dicionário principal
+                        if preco is not None and not pd.isna(preco):
+                            preco_float = float(preco)
+                            # Se for exterior (não tem .SA no final), multiplica pelo dólar
+                            if not ticker.endswith(".SA"):
+                                preco_float = preco_float * cotacao_dolar
+                                
+                            cotacoes[mapa_tickers[ticker]] = preco_float
+                            
             except Exception as e: 
-                print(f"Alerta na busca de cotações YF: {e}")
+                print(f"Alerta na API YF: {e}")
                 
         return cotacoes
     except Exception as e:
-        print(f"Erro geral no obter_cotacoes: {e}")
+        print(f"Erro geral: {e}")
         return cotacoes
 
 @st.cache_data(ttl=300, show_spinner=False)
