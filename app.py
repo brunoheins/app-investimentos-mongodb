@@ -23,13 +23,14 @@ st.markdown("""
         [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; }
         [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
         
-        /* Reduz o espaço entre os botões de navegação */
+        /* Reduz o espaço entre os botões de navegação e as linhas */
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
         [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
+        [data-testid="stSidebar"] hr { margin: 0.5rem 0 !important; } /* Afina o espaçamento da linha */
         
-        /* Puxa o botão de Sair para cima e diminui seu tamanho */
+        /* Ajusta o botão de Sair */
         [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
-        [data-testid="stSidebarUserContent"] .stButton { margin-top: -1rem !important; }
+        [data-testid="stSidebarUserContent"] .stButton { margin-top: 0rem !important; }
         [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -234,7 +235,8 @@ else:
     
     pg.run()
 
-    # Removi os traços (---) e quebras de linha para economizar espaço
+    # Linha divisória devolvida ao final
+    st.sidebar.divider()
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
