@@ -6,6 +6,7 @@ from utils import ler_planilha, registrar_novo_usuario, db
 # A configuração da página DEVE ser a primeira linha do app
 st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
 
+# Injeção de CSS turbinada para compactar a Barra Lateral e remover espaços inúteis
 st.markdown("""
     <style>
         .block-container { padding-top: 2rem; padding-bottom: 2rem; }
@@ -13,6 +14,12 @@ st.markdown("""
         h2 { font-size: 1.5rem !important; }
         h3 { font-size: 1.2rem !important; }
         p { font-size: 0.95rem !important; }
+        
+        /* COMPACTAÇÃO DA BARRA LATERAL */
+        [data-testid="stSidebar"] { padding-top: 1rem !important; width: 20rem !important; }
+        [data-testid="stSidebarNav"] { padding-top: 0rem !important; }
+        [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
+        div[data-testid="stSidebar"] hr { margin: 0.5em 0 !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -200,7 +207,6 @@ else:
     # Constrói o menu do usuário dinamicamente
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     
-    # Se for admin, injeta a tela de impersonação logo abaixo do perfil
     if st.session_state.get('is_admin', False):
         menu_usuario.append(st.Page(painel_admin, title="Visualizar Como", icon="🛠️", url_path="admin"))
 
@@ -222,7 +228,8 @@ else:
     
     pg.run()
 
-    st.sidebar.markdown("<br><br>", unsafe_allow_html=True) 
+    # Linha sutil separadora em vez das quebras grandes
+    st.sidebar.markdown("---") 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
