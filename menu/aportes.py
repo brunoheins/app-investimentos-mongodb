@@ -251,19 +251,18 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             preco = d['PrecoRef']
             alocacao_teorica = aporte_restante
             
-            if d['Is_RV']:
-                if d['Is_BR']:
-                    if preco > 0 and alocacao_teorica >= preco:
-                        qtd = int(alocacao_teorica / preco)
-                        gasto = qtd * preco
-                    else:
-                        qtd, gasto = 0, 0
+            if d['Is_RV'] and d['Is_BR']:
+                if preco > 0 and alocacao_teorica >= preco:
+                    qtd = int(alocacao_teorica / preco)
+                    gasto = qtd * preco
                 else:
-                    if preco > 0:
-                        qtd = alocacao_teorica / preco
-                        gasto = alocacao_teorica
-                    else:
-                        qtd, gasto = 0, 0
+                    qtd, gasto = 0, 0
+            elif d['Is_RV'] and not d['Is_BR']:
+                if preco > 0:
+                    qtd = alocacao_teorica / preco
+                    gasto = alocacao_teorica
+                else:
+                    qtd, gasto = 0, 0
             else:
                 qtd = 0
                 gasto = alocacao_teorica
@@ -287,19 +286,15 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 fator = d['Falta_Comprar'] / total_gap
                 alocacao_teorica = valor_aporte * fator
                 
-                if d['Is_RV']:
-                    if d['Is_BR']:
-                        if preco > 0 and alocacao_teorica >= preco:
-                            qtd = int(alocacao_teorica / preco) 
-                            gasto = qtd * preco
-                        else:
-                            qtd, gasto = 0, 0
+                if d['Is_RV'] and d['Is_BR']:
+                    if preco > 0 and alocacao_teorica >= preco:
+                        qtd = int(alocacao_teorica / preco) 
+                        gasto = qtd * preco
                     else:
-                        if preco > 0:
-                            qtd = alocacao_teorica / preco
-                            gasto = alocacao_teorica
-                        else:
-                            qtd, gasto = 0, 0
+                        qtd, gasto = 0, 0
+                elif d['Is_RV'] and not d['Is_BR']:
+                    qtd = alocacao_teorica / preco if preco > 0 else 0
+                    gasto = alocacao_teorica
                 else:
                     qtd = 0
                     gasto = alocacao_teorica
@@ -319,19 +314,15 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 fator = row['PesoGlobal'] / total_peso if total_peso > 0 else 1/len(df_disp)
                 alocacao_teorica = valor_aporte * fator
                 
-                if d['Is_RV']:
-                    if d['Is_BR']:
-                        if preco > 0 and alocacao_teorica >= preco:
-                            qtd = int(alocacao_teorica / preco)
-                            gasto = qtd * preco
-                        else:
-                            qtd, gasto = 0, 0
+                if d['Is_RV'] and d['Is_BR']:
+                    if preco > 0 and alocacao_teorica >= preco:
+                        qtd = int(alocacao_teorica / preco)
+                        gasto = qtd * preco
                     else:
-                        if preco > 0:
-                            qtd = alocacao_teorica / preco
-                            gasto = alocacao_teorica
-                        else:
-                            qtd, gasto = 0, 0
+                        qtd, gasto = 0, 0
+                elif d['Is_RV'] and not d['Is_BR']:
+                    qtd = alocacao_teorica / preco if preco > 0 else 0
+                    gasto = alocacao_teorica
                 else:
                     qtd = 0
                     gasto = alocacao_teorica
@@ -341,47 +332,27 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d['Falta_Comprar'] -= gasto
                 aporte_restante -= gasto
 
-        # Aporte Dividido: Passo 2 - Otimizador de Trocos Reescrito
+        # Aporte Dividido: Passo 2 - Otimizador de Trocos (Focado 100% em Ativos do Brasil)
         comprou_no_loop = True
         while aporte_restante > 0.01 and comprou_no_loop:
             comprou_no_loop = False
-            # Ordena pelos que mais precisam do dinheiro
             ativos_ordenados = sorted(compras_dict.values(), key=lambda x: x['Falta_Comprar'], reverse=True)
             
             for d in ativos_ordenados:
                 preco = d['PrecoRef']
-                if d['Is_RV']:
-                    if d['Is_BR']:
-                        if preco > 0 and aporte_restante >= preco:
-                            d['Valor'] += preco
-                            d['Qtd'] += 1
-                            d['Falta_Comprar'] -= preco
-                            aporte_restante -= preco
-                            comprou_no_loop = True
-                            break 
-                    else:
-                        # Troco vai integralmente para a RV fracionada (Stocks/REITs)
-                        if preco > 0 and d['Falta_Comprar'] > 0:
-                            d['Valor'] += aporte_restante
-                            d['Qtd'] += aporte_restante / preco
-                            d['Falta_Comprar'] -= aporte_restante
-                            aporte_restante = 0
-                            comprou_no_loop = True
-                            break
-                else:
-                    # Se tudo falhar (nenhum gap em RV), joga pra RF
-                    if d['Categoria'] == 'Renda Fixa' and d['Falta_Comprar'] > 0:
-                        d['Valor'] += aporte_restante
-                        d['Falta_Comprar'] -= aporte_restante
-                        aporte_restante = 0
-                        comprou_no_loop = True
-                        break
+                # Tenta comprar mais cotas inteiras de ativos Brasileiros (Ações/FIIs) para reaproveitar as "sobras"
+                if d['Is_RV'] and d['Is_BR'] and preco > 0 and aporte_restante >= preco:
+                    d['Valor'] += preco
+                    d['Qtd'] += 1
+                    d['Falta_Comprar'] -= preco
+                    aporte_restante -= preco
+                    comprou_no_loop = True
+                    break 
 
     # --- 5. MONTAGEM FINAL DO EXTRATO DE COMPRAS ---
     compras = []
     ordem = 1
     for d in sorted(compras_dict.values(), key=lambda x: x['Valor'], reverse=True):
-        # AQUI ESTÁ A MÁGICA FINAL: Só exibe se de fato alocou dinheiro!
         if d['Valor'] > 0:
             qtd_sugerida_str = "-"
             qtd_faltante_str = "-"
