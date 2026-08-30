@@ -94,7 +94,7 @@ def obter_historico_benchmarks(mes_inicial, mes_final):
 # ==========================================
 def render():
     st.title("📈 Evolução Real do Patrimônio")
-    st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Valor de Mercado**.")
+    st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
 
     with st.spinner("Construindo linha do tempo da sua carteira e processando indicadores..."):
         hoje = pd.Timestamp.today()
@@ -224,11 +224,11 @@ def render():
         df_timeline['Valor_SP500'] = linha_sp500
         df_timeline['Valor_IPCA'] = linha_ipca
 
-        # --- 5. CALCULAR VALOR DE MERCADO ACUMULADO DA CARTEIRA ---
-        linha_mercado = []
+        # --- 5. CALCULAR PATRIMÔNIO REAL (CAIXA PENDENTE + ATIVOS) ---
+        linha_patrimonio = []
         estoque_ativos = {} 
         
-        for mes in range_meses:
+        for i, mes in enumerate(range_meses):
             compras_mes = df_inv_agrupado[df_inv_agrupado['MesAno'] == mes]
             for _, row in compras_mes.iterrows():
                 ativo = row['Ativo']
@@ -244,22 +244,29 @@ def render():
                 estoque_ativos[ativo]['tem_cotacao'] = row['TemCotacao']
             
             valor_mercado_mes = 0.0
+            custo_total_mes = 0.0
             for d in estoque_ativos.values():
+                custo_total_mes += d['custo_acumulado']
                 if d['tem_cotacao']:
                     valor_mercado_mes += d['qtd'] * d['preco_live']
                 else:
                     valor_mercado_mes += d['custo_acumulado']
                     
-            linha_mercado.append(valor_mercado_mes)
+            # A mágica do Caixa Pendente na linha do tempo
+            aportado_ate_mes = linha_aportes[i]
+            caixa_livre_mes = max(0, aportado_ate_mes - custo_total_mes)
             
-        df_timeline['ValorMercado'] = linha_mercado
+            patrimonio_real_mes = valor_mercado_mes + caixa_livre_mes
+            linha_patrimonio.append(patrimonio_real_mes)
+            
+        df_timeline['PatrimonioReal'] = linha_patrimonio
         
         df_timeline['MesExibicao'] = pd.to_datetime(df_timeline['MesAno'], format='%Y-%m').dt.strftime('%m/%Y')
         df_timeline.loc[df_timeline.index[-1], 'MesExibicao'] = "Hoje"
 
         # --- 6. PAINEL DE RESUMO E BENCHMARKS (CHECKBOXES) ---
         live_aportado = df_timeline.iloc[-1]['TotalAportado']
-        live_atual = df_timeline.iloc[-1]['ValorMercado']
+        live_atual = df_timeline.iloc[-1]['PatrimonioReal']
         
         live_cdi = df_timeline.iloc[-1]['Valor_CDI']
         live_ibov = df_timeline.iloc[-1]['Valor_IBOV']
@@ -272,8 +279,8 @@ def render():
         # Linha 1: Os Dados da Sua Carteira
         st.markdown("### 💼 Resumo da Carteira")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Dinheiro do Bolso (Líquido)", formata_br(live_aportado))
-        col2.metric("Saldo Atual (Mercado)", formata_br(live_atual))
+        col1.metric("Total Depositado", formata_br(live_aportado))
+        col2.metric("Patrimônio Real", formata_br(live_atual))
         col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
         
         # Linha 2: Os Dados Teóricos (Benchmarks interativos)
@@ -315,22 +322,22 @@ def render():
         # Linha Base: Dinheiro que saiu do bolso
         fig.add_trace(go.Scatter(
             x=df_timeline['MesExibicao'], y=df_timeline['TotalAportado'],
-            mode='lines+markers', name='Dinheiro Líquido Aportado',
+            mode='lines+markers', name='Total Depositado',
             line=dict(color='#8c92ac', width=3, dash='dot'),
             fill='tozeroy', fillcolor='rgba(140, 146, 172, 0.1)',
-            hovertemplate="Aportado Acumulado: R$ %{y:,.2f}<extra></extra>"
+            hovertemplate="Depositado Acumulado: R$ %{y:,.2f}<extra></extra>"
         ))
 
         cor_saldo = '#00cc96' if live_atual >= live_aportado else '#ef553b'
         cor_area = 'rgba(0, 204, 150, 0.25)' if live_atual >= live_aportado else 'rgba(239, 85, 59, 0.25)'
         
-        # Linha Principal: A Carteira do Usuário
+        # Linha Principal: A Carteira do Usuário (Agora Patrimônio Real)
         fig.add_trace(go.Scatter(
-            x=df_timeline['MesExibicao'], y=df_timeline['ValorMercado'],
-            mode='lines+markers', name='Sua Carteira',
+            x=df_timeline['MesExibicao'], y=df_timeline['PatrimonioReal'],
+            mode='lines+markers', name='Patrimônio Real',
             line=dict(color=cor_saldo, width=3),
             fill='tonexty', fillcolor=cor_area,
-            hovertemplate="Sua Carteira: R$ %{y:,.2f}<extra></extra>"
+            hovertemplate="Patrimônio Real: R$ %{y:,.2f}<extra></extra>"
         ))
 
         # --- INJEÇÃO DOS BENCHMARKS ATIVADOS NO CHECKBOX ---
@@ -392,6 +399,6 @@ def render():
                 st.info("Nenhuma movimentação agrupada.")
         with c_dbg2:
             st.markdown("**2. Acúmulo no Gráfico**")
-            df_dbg = df_timeline[['MesExibicao', 'TotalAportado', 'ValorMercado']].copy()
-            df_dbg.rename(columns={'TotalAportado': 'Linha Cinza', 'ValorMercado': 'Linha Colorida'}, inplace=True)
+            df_dbg = df_timeline[['MesExibicao', 'TotalAportado', 'PatrimonioReal']].copy()
+            df_dbg.rename(columns={'TotalAportado': 'Linha Cinza', 'PatrimonioReal': 'Linha Colorida'}, inplace=True)
             st.dataframe(df_dbg, hide_index=True, width='stretch')
