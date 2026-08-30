@@ -29,7 +29,10 @@ if 'logado' not in st.session_state:
     # Travas de tempo (Antispam e Anti-Força Bruta)
     st.session_state.last_login_time = 0.0
     st.session_state.last_email_time = 0.0
-
+    # Identity Shadowing (Blindagem e Impersonação)
+    st.session_state.email_autenticado = ""
+    st.session_state.is_admin = False
+    st.session_state.admin_email = ""
 
 # ==========================================
 # FUNÇÃO DA TELA DE ACESSO (LOGIN/CADASTRO)
@@ -67,6 +70,11 @@ def tela_acesso():
                                 st.session_state.logado = True
                                 st.session_state.email = email_formatado
                                 st.session_state.nome = usuario.get('nome', 'Usuário')
+                                
+                                # IDENTITY SHADOWING: Registra a identidade imutável e a permissão admin
+                                st.session_state.email_autenticado = email_formatado
+                                st.session_state.is_admin = usuario.get('admin', False)
+                                st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
                                 
                                 st.cache_data.clear() 
                                 st.rerun()
@@ -109,7 +117,6 @@ def tela_acesso():
                         elif not esq_email:
                             st.warning("Preencha o campo de e-mail.")
                         else:
-                            # Registra o momento exato em que o e-mail foi liberado para envio
                             st.session_state.last_email_time = agora
                             with st.spinner("Enviando e-mail..."):
                                 from utils import verificar_email_cadastrado, enviar_codigo_email
@@ -162,6 +169,11 @@ if not st.session_state.logado:
     pg.run()
     
 else:
+    # --- BLINDAGEM DE IDENTIDADE ---
+    # Se não for admin, força a leitura exclusiva da identidade autenticada
+    if not st.session_state.get('is_admin', False):
+        st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
+
     pg = st.navigation({
         f"Usuário: {st.session_state.nome}": [
             st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")
@@ -181,6 +193,31 @@ else:
     })
     
     pg.run()
+
+    # --- PAINEL ADMIN (IMPERSONAÇÃO) ---
+    if st.session_state.get('is_admin', False):
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🛠️ Painel Admin")
+        from utils import listar_todos_usuarios
+        lista_users = listar_todos_usuarios()
+        
+        if lista_users:
+            opcoes = {u['email']: f"{u['nome']} ({u['email']})" for u in lista_users}
+            emails_list = list(opcoes.keys())
+            current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
+            
+            escolha = st.sidebar.selectbox(
+                "Visualizar como:", 
+                options=emails_list, 
+                format_func=lambda x: opcoes[x],
+                index=current_idx
+            )
+            
+            if escolha != st.session_state.email:
+                st.session_state.email = escolha
+                st.session_state.nome = opcoes[escolha].split(' (')[0]
+                st.rerun()
+    # -----------------------------------
 
     st.sidebar.markdown("<br><br>", unsafe_allow_html=True) 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
