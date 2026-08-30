@@ -1,25 +1,6 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 from utils import ler_planilha, formata_br, obter_cotacoes, extrair_numero_br
-
-# ==========================================
-# ARMADURA NUMÉRICA UNIVERSAL
-# ==========================================
-def limpa_numero_seguro(val):
-    if pd.isna(val) or str(val).strip() == '': return 0.0
-    if isinstance(val, (int, float)): return float(val)
-    
-    v = str(val).strip().replace('R$', '').replace(' ', '')
-    if '.' in v and ',' in v:
-        v = v.replace('.', '').replace(',', '.')
-    elif ',' in v:
-        v = v.replace(',', '.')
-    
-    try:
-        return float(v)
-    except:
-        return 0.0
 
 def normalizar_categoria(cat_str):
     c = str(cat_str).strip().upper()
@@ -63,7 +44,8 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     df_ativos_conf['Email'] = df_ativos_conf['Email'].astype(str).str.strip().str.lower()
     df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email].copy()
     
-    cotacoes_dict = obter_cotacoes(email)
+    # CORREÇÃO: A função obter_cotacoes() do utils.py não aceita argumentos.
+    cotacoes_dict = obter_cotacoes()
 
     # --- 1. LER ATIVOS ALVOS OFICIAIS ---
     ativos_alvos = []
@@ -109,6 +91,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                     preco_digitado = extrair_numero_br(row_inv.get(col_preco, 0))
                     df_user_invest.at[idx_inv, 'TotalAtual'] = row_inv['Quantidade'] * preco_digitado
 
+            # >>> A MÁGICA DA CORREÇÃO <<<
             df_user_invest.loc[df_user_invest['Categoria'] == 'Renda Fixa', 'Ativo'] = 'OPORTUNIDADE DE RENDA FIXA'
 
             df_carteira = df_user_invest.groupby(['Categoria', 'Ativo']).agg({
@@ -162,11 +145,10 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             'Qtd_Alvo': row['ValorAlvo'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 9999,
             'Qtd_Atual': row['TotalAtual_Original'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 0,
             'Falta_Comprar': row['Falta_Comprar'],
-            'ValorAlvo': row['ValorAlvo']  # Memoriza o alvo absoluto para a Distância Relativa
+            'ValorAlvo': row['ValorAlvo']
         }
 
     if not dividir:
-        # Aporte Integral: Ordena pela Distância Relativa (%) para furar fila com os zerados
         df_disp['Distancia_Relativa'] = df_disp.apply(lambda r: r['Falta_Comprar'] / r['ValorAlvo'] if r['ValorAlvo'] > 0 else 0, axis=1)
         df_disp = df_disp.sort_values(by=['Distancia_Relativa', 'Falta_Comprar'], ascending=[False, False])
         
@@ -254,12 +236,9 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d['Falta_Comprar'] -= gasto
                 aporte_restante -= gasto
 
-        # Otimizador de Trocos: Agora foca na Defasagem Proporcional (%)
         comprou_no_loop = True
         while aporte_restante > 0.01 and comprou_no_loop:
             comprou_no_loop = False
-            
-            # Ordena primeiro pela defasagem relativa (%). Quem está mais perto de 0 na meta, ganha.
             ativos_ordenados = sorted(
                 compras_dict.values(), 
                 key=lambda x: (x['Falta_Comprar'] / x['ValorAlvo'] if x['ValorAlvo'] > 0 else 0, x['Falta_Comprar']), 
