@@ -220,36 +220,23 @@ else:
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
         st.markdown("""
             <style>
-                /* Fundo vermelho do menu e abre espaço no topo empurrando os links para baixo */
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
-                    padding-top: 4.5rem !important; 
                 }
-                /* "Teleporta" o banner para a posição absoluta no topo da sidebar */
                 .admin-badge {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 17rem; /* Força exatamente a mesma largura da barra lateral */
                     background-color: #ff4444;
                     color: white;
-                    padding: 0.8rem 0.5rem;
+                    padding: 0.6rem;
+                    border-radius: 0.3rem;
                     text-align: center;
-                    font-size: 0.95rem;
+                    margin-bottom: 0.5rem;
+                    margin-top: -0.5rem;
                     line-height: 1.4;
-                    z-index: 999999;
-                    border-bottom: 3px solid #b30000;
-                }
-                /* Zera a caixa invisível original lá embaixo para não empurrar o botão de Sair */
-                div:has(> .admin-badge) {
-                    height: 0px !important;
-                    margin: 0px !important;
-                    padding: 0px !important;
+                    font-size: 0.95rem;
                 }
             </style>
         """, unsafe_allow_html=True)
-        
         st.sidebar.markdown(
             f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
             unsafe_allow_html=True
