@@ -6,20 +6,31 @@ from utils import ler_planilha, registrar_novo_usuario, db
 # A configuração da página DEVE ser a primeira linha do app
 st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
 
-# Injeção de CSS turbinada para compactar a Barra Lateral e remover espaços inúteis
+# --- CSS INJETADO PARA SIMULAR ZOOM E COMPACTAR TUDO ---
 st.markdown("""
     <style>
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-        h1 { font-size: 1.8rem !important; padding-bottom: 0.5rem !important; }
-        h2 { font-size: 1.5rem !important; }
-        h3 { font-size: 1.2rem !important; }
-        p { font-size: 0.95rem !important; }
+        /* 1. SIMULA O ZOOM (Reduz a fonte raiz de 16px para 14px) */
+        html { font-size: 14px !important; }
         
-        /* COMPACTAÇÃO DA BARRA LATERAL */
-        [data-testid="stSidebar"] { padding-top: 1rem !important; width: 20rem !important; }
-        [data-testid="stSidebarNav"] { padding-top: 0rem !important; }
-        [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
-        div[data-testid="stSidebar"] hr { margin: 0.5em 0 !important; }
+        /* 2. COMPACTA O CORPO PRINCIPAL E TEXTOS */
+        .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
+        h1 { font-size: 1.7rem !important; padding-bottom: 0.3rem !important; }
+        h2 { font-size: 1.4rem !important; }
+        h3 { font-size: 1.15rem !important; }
+        p, div, span, label { font-size: 0.95rem !important; }
+        
+        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO */
+        [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; }
+        [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
+        
+        /* Reduz o espaço entre os botões de navegação */
+        [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
+        [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
+        
+        /* Puxa o botão de Sair para cima e diminui seu tamanho */
+        [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
+        [data-testid="stSidebarUserContent"] .stButton { margin-top: -1rem !important; }
+        [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -33,10 +44,8 @@ if 'logado' not in st.session_state:
     st.session_state.nome = ""
     st.session_state.codigo_recuperacao = None
     st.session_state.email_recuperacao = None
-    # Travas de tempo (Antispam e Anti-Força Bruta)
     st.session_state.last_login_time = 0.0
     st.session_state.last_email_time = 0.0
-    # Identity Shadowing (Blindagem e Impersonação)
     st.session_state.email_autenticado = ""
     st.session_state.is_admin = False
     st.session_state.admin_email = ""
@@ -200,13 +209,10 @@ if not st.session_state.logado:
     pg.run()
     
 else:
-    # --- BLINDAGEM DE IDENTIDADE ---
     if not st.session_state.get('is_admin', False):
         st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
 
-    # Constrói o menu do usuário dinamicamente
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
-    
     if st.session_state.get('is_admin', False):
         menu_usuario.append(st.Page(painel_admin, title="Visualizar Como", icon="🛠️", url_path="admin"))
 
@@ -228,8 +234,7 @@ else:
     
     pg.run()
 
-    # Linha sutil separadora em vez das quebras grandes
-    st.sidebar.markdown("---") 
+    # Removi os traços (---) e quebras de linha para economizar espaço
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
