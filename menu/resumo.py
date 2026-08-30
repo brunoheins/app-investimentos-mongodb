@@ -25,7 +25,7 @@ def render():
                 lambda row: row['PrecoLive'] if row['PrecoLive'] > 0 else row['PrecoMedio'], axis=1
             )
             
-            # --- CAIXA AUTOMÁTICO: Diferença entre gasto histórico e saldo atual ---
+            # --- CÁLCULO: Diferença entre gasto histórico e saldo atual ---
             dados_usuario['TotalGastoNaOrdem'] = dados_usuario['Quantidade'] * dados_usuario['PrecoMedio']
             total_gasto_historico = dados_usuario['TotalGastoNaOrdem'].sum()
             # --------------------------------------------------------------------
@@ -68,19 +68,26 @@ def render():
                     meus_depositos['Valor'] = meus_depositos['Valor'].apply(extrair_numero_br)
                     total_depositado = meus_depositos['Valor'].sum()
             
-            # --- CÁLCULO FINAL COM O CAIXA ---
-            caixa_livre = max(0, total_depositado - total_gasto_historico)
+            # --- CÁLCULO FINAL COM O SALDO PENDENTE ---
+            saldo_pendente = max(0, total_depositado - total_gasto_historico)
             total_ativos_atual = carteira_agrupada['TotalAtual'].sum()
             
-            # Patrimônio Real (Ativos + Dinheiro Parado)
-            patrimonio_real = total_ativos_atual + caixa_livre
+            # Patrimônio Real (Ativos + Depósitos não alocados)
+            patrimonio_real = total_ativos_atual + saldo_pendente
             
             evolucao_total_carteira = ((patrimonio_real - total_depositado) / total_depositado if total_depositado > 0 else 0) * 100
             
-            # 4 Colunas para encaixar a métrica de Caixa
+            # 4 Colunas para encaixar as métricas
             col_c1, col_c2, col_c3, col_c4 = st.columns(4)
             col_c1.metric("Total Depositado", formata_br(total_depositado))
-            col_c2.metric("💰 Caixa Disponível", formata_br(caixa_livre))
+            
+            # Adicionado Tooltip explicativo usando o parâmetro 'help'
+            col_c2.metric(
+                "⏳ Pendente de Invest.", 
+                formata_br(saldo_pendente),
+                help="Valor estrito dos depósitos que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
+            )
+            
             col_c3.metric("Patrimônio Real", formata_br(patrimonio_real))
             col_c4.metric("Evolução", f"{evolucao_total_carteira:+.2f}%".replace('.', ','))
             
@@ -92,9 +99,9 @@ def render():
                 st.subheader("Distribuição")
                 df_categoria = carteira_agrupada.groupby('Categoria')['TotalAtual'].sum().reset_index()
                 
-                # Se houver caixa, ele entra como uma "fatia" na Pizza de distribuição global
-                if caixa_livre > 0:
-                    df_caixa = pd.DataFrame([{'Categoria': 'Caixa (Conta Corrente)', 'TotalAtual': caixa_livre}])
+                # Se houver saldo pendente, ele entra como uma "fatia" na Pizza de distribuição global
+                if saldo_pendente > 0:
+                    df_caixa = pd.DataFrame([{'Categoria': 'Aporte Pendente', 'TotalAtual': saldo_pendente}])
                     df_categoria = pd.concat([df_categoria, df_caixa], ignore_index=True)
                 
                 fig = px.pie(df_categoria, values='TotalAtual', names='Categoria', hole=0.4)
