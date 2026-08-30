@@ -3,6 +3,13 @@ from utils import atualizar_dados_perfil
 
 def render():
     st.title("👤 Meu Perfil")
+    
+    # --- BLINDAGEM CONTRA ADMINS ---
+    if st.session_state.get('email') != st.session_state.get('email_autenticado'):
+        st.error("⚠️ **Modo Visualização Ativo:** Como administrador, você não tem permissão para alterar senhas ou dados pessoais de outros usuários.")
+        st.stop()
+    # -------------------------------
+
     st.markdown("Atualize seus dados cadastrais. Para garantir a segurança dos seus investimentos, **o e-mail de acesso não pode ser alterado.**")
 
     with st.form("form_perfil"):
@@ -28,7 +35,7 @@ def render():
                     st.error("⚠️ As senhas não conferem. Digite senhas idênticas.")
                     return
             
-            # Chama o motor para atualizar no Google Sheets
+            # Chama o motor para atualizar no banco de dados
             sucesso, msg = atualizar_dados_perfil(st.session_state.email, novo_nome, nova_senha)
             
             if sucesso:
