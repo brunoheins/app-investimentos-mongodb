@@ -91,49 +91,17 @@ def render():
             
             col_grafico, col_tabelas = st.columns([1, 1.5], gap="large")
             
-            # ==========================================
-            # GRÁFICO E PREPARAÇÃO DOS DADOS DAS CATEGORIAS
-            # ==========================================
             with col_grafico:
                 st.subheader("Distribuição")
-                
-                # Agrupa trazendo também o Gasto para calcularmos as rentabilidades por Categoria
-                df_categoria = carteira_agrupada.groupby('Categoria').agg({
-                    'TotalAtual': 'sum',
-                    'TotalGastoNaOrdem': 'sum'
-                }).reset_index()
+                df_categoria = carteira_agrupada.groupby('Categoria')['TotalAtual'].sum().reset_index()
                 
                 if saldo_pendente > 0:
-                    df_caixa = pd.DataFrame([{
-                        'Categoria': 'Aporte Pendente', 
-                        'TotalAtual': saldo_pendente,
-                        'TotalGastoNaOrdem': saldo_pendente # Gasto = Atual para render 0%
-                    }])
+                    df_caixa = pd.DataFrame([{'Categoria': 'Aporte Pendente', 'TotalAtual': saldo_pendente}])
                     df_categoria = pd.concat([df_categoria, df_caixa], ignore_index=True)
                 
-                # Calculando o rendimento financeiro e percentual por categoria
-                df_categoria['Rendimento_RS'] = df_categoria['TotalAtual'] - df_categoria['TotalGastoNaOrdem']
-                df_categoria['Rentabilidade_Pct'] = (df_categoria['Rendimento_RS'] / df_categoria['TotalGastoNaOrdem'].replace(0, 1)) * 100
-                
-                # Formatando os textos para o Tooltip (a caixinha do mouse) e para as Tabelas
-                df_categoria['Valor_Fmt'] = df_categoria['TotalAtual'].apply(formata_br)
-                df_categoria['Rend_Fmt'] = df_categoria['Rendimento_RS'].apply(formata_br)
-                df_categoria['Rent_Fmt'] = df_categoria['Rentabilidade_Pct'].apply(lambda x: f"{x:+.2f}%".replace('.', ','))
-                
-                # Cria a string HTML do Tooltip condicional (Esconde rendimento do Caixa)
-                df_categoria['Tooltip'] = df_categoria.apply(
-                    lambda r: f"Total: {r['Valor_Fmt']}<br>Rendimento: {r['Rend_Fmt']} ({r['Rent_Fmt']})" 
-                              if r['Categoria'] != 'Aporte Pendente' 
-                              else f"Total: {r['Valor_Fmt']}<br>Caixa Livre (Sem Rendimento)", 
-                    axis=1
-                )
-                
-                # Plota o gráfico injetando a nossa coluna customizada (Tooltip) no Hover
-                fig = px.pie(df_categoria, values='TotalAtual', names='Categoria', hole=0.4, custom_data=['Tooltip'])
-                fig.update_traces(
-                    textinfo='label+percent', 
-                    hovertemplate="<b>%{label}</b><br>%{customdata[0]}<extra></extra>"
-                )
+                # Gráfico limpo, focando apenas no percentual de alocação
+                fig = px.pie(df_categoria, values='TotalAtual', names='Categoria', hole=0.4)
+                fig.update_traces(textinfo='label+percent')
                 fig.update_layout(height=350, margin=dict(t=20, b=20, l=0, r=0), showlegend=False)
                 st.plotly_chart(fig, width='stretch')
             
@@ -141,11 +109,8 @@ def render():
                 st.subheader("Detalhamento por Ativos")
                 for cat in carteira_agrupada['Categoria'].unique():
                     
-                    # Puxa a string de rentabilidade formatada (ex: "+15,20%") da categoria atual
-                    linha_cat = df_categoria[df_categoria['Categoria'] == cat].iloc[0]
-                    titulo_expander = f"📁 {cat}  —  Rendimento: {linha_cat['Rent_Fmt']}"
-                    
-                    with st.expander(titulo_expander, expanded=False): 
+                    # Mantém o título neutro para evitar gatilhos emocionais
+                    with st.expander(f"📁 {cat}", expanded=False): 
                         df_exibicao = carteira_agrupada[carteira_agrupada['Categoria'] == cat][['Ativo', 'Setor', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'TotalAtual', 'EvolucaoPct']].copy()
                         
                         df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.').str.rstrip('0').str.rstrip(',')
