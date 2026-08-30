@@ -407,6 +407,7 @@ def obter_cotacoes():
                     ativo = str(row.get('Ativo', '')).strip().upper()
                     if ativo and ativo not in ["NAN", "NONE", ""]:
                         ativos_buscados.add(ativo)
+                        # Preenche provisoriamente com o Preço Médio (Fallback se o YF cair)
                         pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
                         if pm > 0 and ativo not in cotacoes: cotacoes[ativo] = pm
 
@@ -417,6 +418,8 @@ def obter_cotacoes():
                     if ativo and ativo not in ["NAN", "NONE", ""]: ativos_buscados.add(ativo)
 
         if not ativos_buscados: return cotacoes
+        
+        # BUSCA TESOURO DIRETO
         titulos_tesouro = []
         try:
             df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
@@ -444,6 +447,8 @@ def obter_cotacoes():
                 ativos_ja_encontrados.add(nome_original)
 
         ativos_buscados = ativos_buscados - ativos_ja_encontrados
+        
+        # BUSCA YAHOO FINANCE
         if ativos_buscados:
             tickers_yf, mapa_tickers, tem_exterior = [], {}, False
             for ativo in ativos_buscados:
@@ -454,29 +459,51 @@ def obter_cotacoes():
                 mapa_tickers[ticker] = ativo 
 
             if tem_exterior: tickers_yf.append("BRL=X")
+            
             try:
-                df_raw = yf.download(list(set(tickers_yf)), period="1d", progress=False, ignore_tz=True)
+                # Mudança Crucial: period="5d" para contornar o fim de semana e feriados
+                df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False, ignore_tz=True)
+                
                 if not df_raw.empty:
                     df_prices = pd.DataFrame()
+                    
+                    # Tratamento das colunas MultiIndex das novas versões do yfinance
                     if isinstance(df_raw.columns, pd.MultiIndex):
-                        for col_type in ['Close', 'Adj Close']:
-                            if col_type in df_raw.columns.get_level_values(0): df_prices = df_raw[col_type]; break
-                            elif col_type in df_raw.columns.get_level_values(1): df_prices = df_raw.xs(col_type, axis=1, level=1); break
+                        for col_type in ['Adj Close', 'Close']:
+                            if col_type in df_raw.columns.get_level_values(0): 
+                                df_prices = df_raw[col_type]
+                                break
+                            elif col_type in df_raw.columns.get_level_values(1): 
+                                df_prices = df_raw.xs(col_type, axis=1, level=1)
+                                break
                     else:
-                        col = 'Close' if 'Close' in df_raw.columns else 'Adj Close'
-                        if col in df_raw.columns: df_prices = df_raw[[col]].copy(); df_prices.columns = [tickers_yf[0]]
+                        col = 'Adj Close' if 'Adj Close' in df_raw.columns else 'Close'
+                        if col in df_raw.columns: 
+                            df_prices = df_raw[[col]].copy()
+                            df_prices.columns = [tickers_yf[0]]
 
-                    if isinstance(df_prices, pd.Series): df_prices = df_prices.to_frame(name=tickers_yf[0])
+                    if isinstance(df_prices, pd.Series): 
+                        df_prices = df_prices.to_frame(name=tickers_yf[0])
+                        
                     if not df_prices.empty:
-                        cotacao_dolar = float(df_prices["BRL=X"].iloc[-1]) if tem_exterior and "BRL=X" in df_prices.columns else 1.0
+                        # Preenche vazios (feriados parciais) e pega a última linha (último pregão)
+                        s_last = df_prices.ffill().iloc[-1]
+                        
+                        cotacao_dolar = float(s_last.get("BRL=X", 1.0)) if tem_exterior else 1.0
+                        
                         for ticker in tickers_yf:
                             if ticker == "BRL=X": continue
-                            if ticker in df_prices.columns and pd.notna(float(df_prices[ticker].iloc[-1])):
-                                preco = float(df_prices[ticker].iloc[-1])
+                            if ticker in s_last.index and pd.notna(s_last[ticker]):
+                                preco = float(s_last[ticker])
+                                # Sobrescreve o Preço Médio (Fallback) pelo Preço Real de Mercado
                                 cotacoes[mapa_tickers[ticker]] = preco * cotacao_dolar if not ticker.endswith(".SA") else preco
-            except: pass
+            except Exception as e: 
+                print(f"Alerta na busca de cotações YF: {e}")
+                
         return cotacoes
-    except: return cotacoes
+    except Exception as e:
+        print(f"Erro geral no obter_cotacoes: {e}")
+        return cotacoes
 
 @st.cache_data(ttl=300, show_spinner=False)
 def obter_ativos_por_categoria(email_usuario):
