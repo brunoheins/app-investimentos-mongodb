@@ -80,7 +80,7 @@ def render():
             col_c1, col_c2, col_c3, col_c4 = st.columns(4)
             col_c1.metric("Total Depositado", formata_br(total_depositado))
             col_c2.metric(
-                "⏳ Pendente de Invest.", 
+                "Pendente Invertir", 
                 formata_br(saldo_pendente),
                 help="Valor estrito dos depósitos que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
             )
