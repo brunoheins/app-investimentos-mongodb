@@ -80,9 +80,9 @@ def render():
             col_c1, col_c2, col_c3, col_c4 = st.columns(4)
             col_c1.metric("Total Depositado", formata_br(total_depositado))
             col_c2.metric(
-                "Pendente Invertir", 
+                "Aporte Pendente", 
                 formata_br(saldo_pendente),
-                help="Valor estrito dos depósitos que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
+                help="Valor depositado que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
             )
             col_c3.metric("Patrimônio Real", formata_br(patrimonio_real))
             col_c4.metric("Evolução", f"{evolucao_total_carteira:+.2f}%".replace('.', ','))
