@@ -236,7 +236,9 @@ else:
     pg.run()
 
     # Linha divisória devolvida ao final
-    st.sidebar.divider()
+    #st.sidebar.divider()
+    # Linha única injetada via HTML/CSS controlada
+    st.sidebar.markdown("<hr style='margin: 0.5rem 0; border: none; border-top: 1px solid rgba(250, 250, 250, 0.2);'>", unsafe_allow_html=True)
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
