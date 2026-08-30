@@ -19,7 +19,7 @@ st.markdown("""
         h3 { font-size: 1.15rem !important; }
         p, div, span, label { font-size: 0.95rem !important; }
         
-        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO */
+        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO E CORRIGE A LINHA */
         [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; transition: background-color 0.3s ease; }
         [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
         
@@ -220,15 +220,28 @@ else:
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
         st.markdown("""
             <style>
-                /* Muda o fundo do menu lateral para um vermelho escuro elegante */
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
                 }
+                .admin-badge {
+                    background-color: #ff4444;
+                    color: white;
+                    padding: 0.6rem;
+                    border-radius: 0.3rem;
+                    text-align: center;
+                    margin-bottom: 0.5rem;
+                    margin-top: -0.5rem; /* Puxa para cima ignorando o padding nativo */
+                    line-height: 1.4;
+                    font-size: 0.95rem;
+                }
             </style>
         """, unsafe_allow_html=True)
-        # Adiciona um aviso vermelho fixo no topo do menu lateral
-        st.sidebar.error(f"⚠️ **MODO ADMIN**\n\nVendo como:\n**{st.session_state.nome}**")
+        # Injeta uma caixa de alerta visualmente superior em vez do balão genérico do st.error
+        st.sidebar.markdown(
+            f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
+            unsafe_allow_html=True
+        )
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
