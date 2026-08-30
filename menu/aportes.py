@@ -200,6 +200,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         df_gap = df_disp[df_disp['Falta_Comprar'] > 0].copy()
         
         if not df_gap.empty:
+            
             # ==========================================
             # PASSO 1: O RESGATE DOS ZERADOS (Furar Fila)
             # ==========================================
@@ -209,6 +210,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d = compras_dict[ativo]
                 preco = d['PrecoRef']
                 
+                # Garante que vai tentar comprar 1 cota de todos os ativos novos antes da matemática atuar
                 if d['Is_RV'] and d['Is_BR']:
                     if preco > 0 and aporte_restante >= preco:
                         d['Valor'] += preco
@@ -216,6 +218,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                         d['Falta_Comprar'] -= preco
                         aporte_restante -= preco
                 elif d['Is_RV'] and not d['Is_BR']:
+                    # Ativos do exterior podem ser fracionados
                     gasto = min(aporte_restante, d['Falta_Comprar'])
                     if preco > 0 and gasto > 0:
                         d['Valor'] += gasto
@@ -229,7 +232,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                         d['Falta_Comprar'] -= gasto
                         aporte_restante -= gasto
 
-            # Atualiza o quadro de gaps após socorrer os zerados
+            # Atualiza o gap após a fila ser furada pelos zerados
             for idx, row in df_gap.iterrows():
                 ativo = row['Ativo']
                 df_gap.at[idx, 'Falta_Comprar'] = compras_dict[ativo]['Falta_Comprar']
@@ -237,7 +240,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             df_gap = df_gap[df_gap['Falta_Comprar'] > 0]
 
             # ==========================================
-            # PASSO 2: DIVISÃO PROPORCIONAL
+            # PASSO 2: DIVISÃO PROPORCIONAL DA SOBRA
             # ==========================================
             if not df_gap.empty and aporte_restante > 0:
                 total_gap = df_gap['Falta_Comprar'].sum()
@@ -296,12 +299,11 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 aporte_restante -= gasto
 
         # ==========================================
-        # PASSO 3: OTIMIZADOR DE TROCOS 
+        # PASSO 3: OTIMIZADOR DE TROCOS
         # ==========================================
         comprou_no_loop = True
         while aporte_restante > 0.01 and comprou_no_loop:
             comprou_no_loop = False
-            # Ordena por Distância Relativa (%) - Prioriza quem está mais longe da meta real
             ativos_ordenados = sorted(
                 compras_dict.values(), 
                 key=lambda x: (x['Falta_Comprar'] / x['ValorAlvo'] if x['ValorAlvo'] > 0 else 0, x['Falta_Comprar']), 
