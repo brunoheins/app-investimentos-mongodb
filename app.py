@@ -19,17 +19,25 @@ st.markdown("""
         h3 { font-size: 1.15rem !important; }
         p, div, span, label { font-size: 0.95rem !important; }
         
-        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO */
+        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO E CORRIGE A LINHA */
         [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; }
-        [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0rem !important; }
+        [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
         
-        /* Reduz o espaço entre os botões de navegação e as linhas */
+        /* Reduz o espaço entre os botões de navegação */
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
         [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
-        [data-testid="stSidebar"] hr { margin: 0.5rem 0 !important; } /* Afina o espaçamento da linha */
+        
+        /* Mata as linhas nativas duplicadas do Streamlit */
+        [data-testid="stSidebar"] hr { display: none !important; }
+        
+        /* Aplica UMA ÚNICA LINHA na parte superior do bloco do botão Sair */
+        [data-testid="stSidebarUserContent"] { 
+            border-top: 1px solid rgba(250, 250, 250, 0.1) !important; 
+            padding-top: 0.5rem !important; 
+            padding-bottom: 0.5rem !important; 
+        }
         
         /* Ajusta o botão de Sair */
-        [data-testid="stSidebarUserContent"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
         [data-testid="stSidebarUserContent"] .stButton { margin-top: 0rem !important; }
         [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
     </style>
@@ -235,10 +243,7 @@ else:
     
     pg.run()
 
-    # Linha divisória devolvida ao final
-    #st.sidebar.divider()
-    # Linha única injetada via HTML/CSS controlada
-    st.sidebar.markdown("<hr style='margin: 0.5rem 0; border: none; border-top: 1px solid rgba(250, 250, 250, 0.2);'>", unsafe_allow_html=True)
+    # O CSS resolve as linhas, aqui fica apenas o botão direto
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
