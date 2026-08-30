@@ -27,7 +27,7 @@ st.markdown("""
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
         [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
         
-        /* Ajusta o botão de Sair (Deixando apenas a linha nativa do Streamlit) */
+        /* Ajusta o botão de Sair */
         [data-testid="stSidebarUserContent"] { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
         [data-testid="stSidebarUserContent"] .stButton { margin-top: 0rem !important; }
         [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
@@ -177,29 +177,83 @@ def tela_acesso():
 # ==========================================
 def painel_admin():
     st.title("🛠️ Painel do Administrador")
-    st.markdown("Selecione um usuário abaixo para visualizar o sistema como se fosse ele. Suas permissões de alteração de dados sensíveis continuarão bloqueadas.")
     
-    st.info("💡 **Dica:** Você não precisa rolar a lista! Basta clicar na caixa abaixo e **começar a digitar** o nome ou e-mail.")
+    tab_gestao, tab_impersonar = st.tabs(["👥 Gestão de Acessos", "🎭 Visualizar Como (Impersonação)"])
     
-    from utils import listar_todos_usuarios
-    lista_users = listar_todos_usuarios()
-    
-    if lista_users:
-        opcoes = {u['email']: f"{u['nome']} ({u['email']})" for u in lista_users}
-        emails_list = list(opcoes.keys())
-        current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
+    with tab_gestao:
+        st.markdown("Gerencie a liberação ou revogação de acessos ao sistema.")
+        usuarios = list(db.usuarios.find({}, {"_id": 1, "nome": 1, "status": 1}))
         
-        escolha = st.selectbox(
-            "🔎 Buscar usuário:", 
-            options=emails_list, 
-            format_func=lambda x: opcoes[x],
-            index=current_idx
-        )
+        if usuarios:
+            df_users = pd.DataFrame(usuarios)
+            df_users.rename(columns={"_id": "Email", "nome": "Nome", "status": "Status"}, inplace=True)
+            
+            # --- PENDENTES ---
+            st.markdown("<br>**⏳ Aguardando Liberação**", unsafe_allow_html=True)
+            pendentes = df_users[df_users['Status'] == 'Pendente']
+            
+            if pendentes.empty:
+                st.info("Nenhum usuário aguardando aprovação no momento.")
+            else:
+                for _, row in pendentes.iterrows():
+                    c1, c2, c3 = st.columns([3, 1, 1])
+                    c1.markdown(f"**{row['Nome']}** <span style='color:gray; font-size:0.85em;'>({row['Email']})</span>", unsafe_allow_html=True)
+                    if c2.button("✅ Ativar", key=f"ativar_{row['Email']}", use_container_width=True):
+                        db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": "Ativo"}})
+                        st.rerun()
+                    if c3.button("❌ Revogar", key=f"revogar_{row['Email']}", use_container_width=True):
+                        db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": "Revogado"}})
+                        st.rerun()
+                        
+            st.markdown("---")
+            
+            # --- ATIVOS / REVOGADOS ---
+            st.markdown("**📋 Base de Usuários**")
+            outros = df_users[df_users['Status'] != 'Pendente']
+            
+            for _, row in outros.iterrows():
+                # Proteção para o Admin não revogar o próprio acesso sem querer
+                if row['Email'] == st.session_state.get('admin_email'): 
+                    continue 
+                
+                c_info, c_status = st.columns([3, 2])
+                c_info.markdown(f"{row['Nome']} <span style='color:gray; font-size:0.85em;'>({row['Email']})</span>", unsafe_allow_html=True)
+                
+                novo_status = c_status.selectbox(
+                    "Status", 
+                    options=["Ativo", "Revogado", "Pendente"], 
+                    index=["Ativo", "Revogado", "Pendente"].index(row['Status']),
+                    key=f"status_{row['Email']}",
+                    label_visibility="collapsed"
+                )
+                
+                if novo_status != row['Status']:
+                    db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": novo_status}})
+                    st.rerun()
+                    
+    with tab_impersonar:
+        st.markdown("Selecione um usuário abaixo para visualizar o sistema como se fosse ele. Suas permissões de alteração continuarão bloqueadas.")
+        st.info("💡 **Dica:** Clique na caixa e **comece a digitar** o nome ou e-mail.")
         
-        if escolha != st.session_state.email:
-            st.session_state.email = escolha
-            st.session_state.nome = opcoes[escolha].split(' (')[0]
-            st.rerun()
+        from utils import listar_todos_usuarios
+        lista_users = listar_todos_usuarios()
+        
+        if lista_users:
+            opcoes = {u['email']: f"{u['nome']} ({u['email']})" for u in lista_users}
+            emails_list = list(opcoes.keys())
+            current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
+            
+            escolha = st.selectbox(
+                "🔎 Buscar usuário:", 
+                options=emails_list, 
+                format_func=lambda x: opcoes[x],
+                index=current_idx
+            )
+            
+            if escolha != st.session_state.email:
+                st.session_state.email = escolha
+                st.session_state.nome = opcoes[escolha].split(' (')[0]
+                st.rerun()
 
 
 # ==========================================
@@ -223,20 +277,30 @@ else:
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
+                    padding-top: 4.5rem !important; 
                 }
                 .admin-badge {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 17rem; 
                     background-color: #ff4444;
                     color: white;
-                    padding: 0.6rem;
-                    border-radius: 0.3rem;
+                    padding: 0.8rem 0.5rem;
                     text-align: center;
-                    margin-bottom: 0.5rem;
-                    margin-top: -0.5rem;
-                    line-height: 1.4;
                     font-size: 0.95rem;
+                    line-height: 1.4;
+                    z-index: 999999;
+                    border-bottom: 3px solid #b30000;
+                }
+                div:has(> .admin-badge) {
+                    height: 0px !important;
+                    margin: 0px !important;
+                    padding: 0px !important;
                 }
             </style>
         """, unsafe_allow_html=True)
+        
         st.sidebar.markdown(
             f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
             unsafe_allow_html=True
@@ -244,7 +308,7 @@ else:
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
-        menu_usuario.append(st.Page(painel_admin, title="Visualizar Como", icon="🛠️", url_path="admin"))
+        menu_usuario.append(st.Page(painel_admin, title="Painel Admin", icon="🛠️", url_path="admin"))
 
     pg = st.navigation({
         f"Usuário: {st.session_state.nome}": menu_usuario,
