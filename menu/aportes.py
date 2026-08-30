@@ -1,6 +1,25 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 from utils import ler_planilha, formata_br, obter_cotacoes, extrair_numero_br
+
+# ==========================================
+# ARMADURA NUMÉRICA UNIVERSAL
+# ==========================================
+def limpa_numero_seguro(val):
+    if pd.isna(val) or str(val).strip() == '': return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    
+    v = str(val).strip().replace('R$', '').replace(' ', '')
+    if '.' in v and ',' in v:
+        v = v.replace('.', '').replace(',', '.')
+    elif ',' in v:
+        v = v.replace(',', '.')
+    
+    try:
+        return float(v)
+    except:
+        return 0.0
 
 def normalizar_categoria(cat_str):
     c = str(cat_str).strip().upper()
@@ -44,7 +63,6 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     df_ativos_conf['Email'] = df_ativos_conf['Email'].astype(str).str.strip().str.lower()
     df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email].copy()
     
-    # CORREÇÃO: A função obter_cotacoes() do utils.py não aceita argumentos.
     cotacoes_dict = obter_cotacoes()
 
     # --- 1. LER ATIVOS ALVOS OFICIAIS ---
@@ -91,7 +109,6 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                     preco_digitado = extrair_numero_br(row_inv.get(col_preco, 0))
                     df_user_invest.at[idx_inv, 'TotalAtual'] = row_inv['Quantidade'] * preco_digitado
 
-            # >>> A MÁGICA DA CORREÇÃO <<<
             df_user_invest.loc[df_user_invest['Categoria'] == 'Renda Fixa', 'Ativo'] = 'OPORTUNIDADE DE RENDA FIXA'
 
             df_carteira = df_user_invest.groupby(['Categoria', 'Ativo']).agg({
@@ -183,31 +200,73 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         df_gap = df_disp[df_disp['Falta_Comprar'] > 0].copy()
         
         if not df_gap.empty:
-            total_gap = df_gap['Falta_Comprar'].sum()
-            for idx, row in df_gap.iterrows():
+            # ==========================================
+            # PASSO 1: O RESGATE DOS ZERADOS (Furar Fila)
+            # ==========================================
+            zerados = df_gap[df_gap['TotalAtual_Original'] == 0].sort_values(by='PesoGlobal', ascending=False)
+            for idx, row in zerados.iterrows():
                 ativo = row['Ativo']
                 d = compras_dict[ativo]
                 preco = d['PrecoRef']
-                fator = d['Falta_Comprar'] / total_gap
-                alocacao_teorica = valor_aporte * fator
                 
                 if d['Is_RV'] and d['Is_BR']:
-                    if preco > 0 and alocacao_teorica >= preco:
-                        qtd = int(alocacao_teorica / preco) 
-                        gasto = qtd * preco
-                    else:
-                        qtd, gasto = 0, 0
+                    if preco > 0 and aporte_restante >= preco:
+                        d['Valor'] += preco
+                        d['Qtd'] += 1
+                        d['Falta_Comprar'] -= preco
+                        aporte_restante -= preco
                 elif d['Is_RV'] and not d['Is_BR']:
-                    qtd = alocacao_teorica / preco if preco > 0 else 0
-                    gasto = alocacao_teorica
+                    gasto = min(aporte_restante, d['Falta_Comprar'])
+                    if preco > 0 and gasto > 0:
+                        d['Valor'] += gasto
+                        d['Qtd'] += gasto / preco
+                        d['Falta_Comprar'] -= gasto
+                        aporte_restante -= gasto
                 else:
-                    qtd = 0
-                    gasto = alocacao_teorica
+                    gasto = min(aporte_restante, d['Falta_Comprar'])
+                    if gasto > 0:
+                        d['Valor'] += gasto
+                        d['Falta_Comprar'] -= gasto
+                        aporte_restante -= gasto
+
+            # Atualiza o quadro de gaps após socorrer os zerados
+            for idx, row in df_gap.iterrows():
+                ativo = row['Ativo']
+                df_gap.at[idx, 'Falta_Comprar'] = compras_dict[ativo]['Falta_Comprar']
+                
+            df_gap = df_gap[df_gap['Falta_Comprar'] > 0]
+
+            # ==========================================
+            # PASSO 2: DIVISÃO PROPORCIONAL
+            # ==========================================
+            if not df_gap.empty and aporte_restante > 0:
+                total_gap = df_gap['Falta_Comprar'].sum()
+                aporte_para_dividir = aporte_restante 
+                
+                for idx, row in df_gap.iterrows():
+                    ativo = row['Ativo']
+                    d = compras_dict[ativo]
+                    preco = d['PrecoRef']
+                    fator = d['Falta_Comprar'] / total_gap
+                    alocacao_teorica = aporte_para_dividir * fator
                     
-                d['Valor'] += gasto
-                d['Qtd'] += qtd
-                d['Falta_Comprar'] -= gasto
-                aporte_restante -= gasto
+                    if d['Is_RV'] and d['Is_BR']:
+                        if preco > 0 and alocacao_teorica >= preco:
+                            qtd = int(alocacao_teorica / preco) 
+                            gasto = qtd * preco
+                        else:
+                            qtd, gasto = 0, 0
+                    elif d['Is_RV'] and not d['Is_BR']:
+                        qtd = alocacao_teorica / preco if preco > 0 else 0
+                        gasto = alocacao_teorica
+                    else:
+                        qtd = 0
+                        gasto = alocacao_teorica
+                        
+                    d['Valor'] += gasto
+                    d['Qtd'] += qtd
+                    d['Falta_Comprar'] -= gasto
+                    aporte_restante -= gasto
         
         else:
             total_peso = df_disp['PesoGlobal'].sum()
@@ -236,9 +295,13 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 d['Falta_Comprar'] -= gasto
                 aporte_restante -= gasto
 
+        # ==========================================
+        # PASSO 3: OTIMIZADOR DE TROCOS 
+        # ==========================================
         comprou_no_loop = True
         while aporte_restante > 0.01 and comprou_no_loop:
             comprou_no_loop = False
+            # Ordena por Distância Relativa (%) - Prioriza quem está mais longe da meta real
             ativos_ordenados = sorted(
                 compras_dict.values(), 
                 key=lambda x: (x['Falta_Comprar'] / x['ValorAlvo'] if x['ValorAlvo'] > 0 else 0, x['Falta_Comprar']), 
