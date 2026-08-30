@@ -27,7 +27,7 @@ def limpa_numero_seguro(val):
 # ==========================================
 @st.cache_data(ttl=900, show_spinner=False)
 def obter_cotacoes(email_usuario):
-    """Busca cotações APENAS para os ativos do usuário logado (Isolando erros como o do FWRA)"""
+    """Busca cotações APENAS para os ativos do usuário logado"""
     df_invest = ler_planilha("Investimentos")
     if df_invest.empty: return {}
     
@@ -220,11 +220,9 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         else ("🔴 Abaixo da Meta" if x['Atual (%)'] < x['Alvo (%)'] else "🟡 Acima da Meta"), 
         axis=1
     )
-    
-    # ORDENAÇÃO DECRESCENTE PELA COLUNA 'ALVO (%)'
     df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
 
-    # --- 4. ALOCAÇÃO INTELIGENTE REESCRITA ---
+    # --- 4. ALOCAÇÃO INTELIGENTE BLINDADA ---
     compras_dict = {}
     aporte_restante = valor_aporte
     df_disp = df_calc[df_calc['Is_Target'] == True].copy()
@@ -239,7 +237,6 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             'Qtd': 0.0,
             'Is_RV': row['Categoria'] in ["Ações", "FIIs", "Stocks", "REITs", "ETFs"],
             'Is_BR': row['Categoria'] in ["Ações", "FIIs"],
-            # Correção matemática: Ignora o 0 se houver alvo.
             'Qtd_Alvo': row['ValorAlvo'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 9999,
             'Qtd_Atual': row['TotalAtual_Original'] / row['PrecoAtual'] if row['PrecoAtual'] > 0 else 0,
             'Falta_Comprar': row['Falta_Comprar']
@@ -249,26 +246,27 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         # Aporte Integral: Aloca 100% no ativo mais defasado da carteira
         df_disp = df_disp.sort_values(by='Falta_Comprar', ascending=False)
         if not df_disp.empty:
-            row = df_disp.iloc[0]
-            ativo = row['Ativo']
+            ativo = df_disp.iloc[0]['Ativo']
             d = compras_dict[ativo]
             preco = d['PrecoRef']
+            alocacao_teorica = aporte_restante
             
-            # Se for RV, permite o cálculo exato fracionário p/ exterior ou ignorando zero
             if d['Is_RV']:
-                if d['Is_BR'] and preco > 0:
-                    qtd = int(aporte_restante / preco)
-                    gasto = qtd * preco
+                if d['Is_BR']:
+                    if preco > 0 and alocacao_teorica >= preco:
+                        qtd = int(alocacao_teorica / preco)
+                        gasto = qtd * preco
+                    else:
+                        qtd, gasto = 0, 0
                 else:
-                    # Compra fracionada para ativos no exterior
-                    qtd = (aporte_restante / preco) if preco > 0 else 0
-                    gasto = aporte_restante
-            elif not d['Is_RV']:
-                qtd = 0
-                gasto = aporte_restante
+                    if preco > 0:
+                        qtd = alocacao_teorica / preco
+                        gasto = alocacao_teorica
+                    else:
+                        qtd, gasto = 0, 0
             else:
-                gasto = 0
                 qtd = 0
+                gasto = alocacao_teorica
                 
             d['Valor'] += gasto
             d['Qtd'] += qtd
@@ -282,7 +280,6 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         # Filtra os ativos que realmente têm gap e força a alocação matemática
         if not df_gap.empty:
             total_gap = df_gap['Falta_Comprar'].sum()
-            
             for idx, row in df_gap.iterrows():
                 ativo = row['Ativo']
                 d = compras_dict[ativo]
@@ -291,19 +288,21 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 alocacao_teorica = valor_aporte * fator
                 
                 if d['Is_RV']:
-                    if d['Is_BR'] and preco > 0:
-                        qtd = int(alocacao_teorica / preco) 
-                        gasto = qtd * preco
+                    if d['Is_BR']:
+                        if preco > 0 and alocacao_teorica >= preco:
+                            qtd = int(alocacao_teorica / preco) 
+                            gasto = qtd * preco
+                        else:
+                            qtd, gasto = 0, 0
                     else:
-                        # Para Stocks/REITs: Gasta tudo o que foi teoricamente alocado (compra fracionada)
-                        qtd = alocacao_teorica / preco if preco > 0 else 0
-                        gasto = alocacao_teorica
-                elif not d['Is_RV']:
+                        if preco > 0:
+                            qtd = alocacao_teorica / preco
+                            gasto = alocacao_teorica
+                        else:
+                            qtd, gasto = 0, 0
+                else:
                     qtd = 0
                     gasto = alocacao_teorica
-                else:
-                    gasto = 0
-                    qtd = 0
                     
                 d['Valor'] += gasto
                 d['Qtd'] += qtd
@@ -321,18 +320,21 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                 alocacao_teorica = valor_aporte * fator
                 
                 if d['Is_RV']:
-                    if d['Is_BR'] and preco > 0:
-                        qtd = int(alocacao_teorica / preco)
-                        gasto = qtd * preco
+                    if d['Is_BR']:
+                        if preco > 0 and alocacao_teorica >= preco:
+                            qtd = int(alocacao_teorica / preco)
+                            gasto = qtd * preco
+                        else:
+                            qtd, gasto = 0, 0
                     else:
-                        qtd = alocacao_teorica / preco if preco > 0 else 0
-                        gasto = alocacao_teorica
-                elif not d['Is_RV']:
+                        if preco > 0:
+                            qtd = alocacao_teorica / preco
+                            gasto = alocacao_teorica
+                        else:
+                            qtd, gasto = 0, 0
+                else:
                     qtd = 0
                     gasto = alocacao_teorica
-                else:
-                    gasto = 0
-                    qtd = 0
                     
                 d['Valor'] += gasto
                 d['Qtd'] += qtd
@@ -359,9 +361,9 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                             break 
                     else:
                         # Troco vai integralmente para a RV fracionada (Stocks/REITs)
-                        if d['Falta_Comprar'] > 0:
+                        if preco > 0 and d['Falta_Comprar'] > 0:
                             d['Valor'] += aporte_restante
-                            if preco > 0: d['Qtd'] += aporte_restante / preco
+                            d['Qtd'] += aporte_restante / preco
                             d['Falta_Comprar'] -= aporte_restante
                             aporte_restante = 0
                             comprou_no_loop = True
@@ -379,6 +381,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     compras = []
     ordem = 1
     for d in sorted(compras_dict.values(), key=lambda x: x['Valor'], reverse=True):
+        # AQUI ESTÁ A MÁGICA FINAL: Só exibe se de fato alocou dinheiro!
         if d['Valor'] > 0:
             qtd_sugerida_str = "-"
             qtd_faltante_str = "-"
@@ -435,7 +438,6 @@ def render():
         st.markdown("---")
         st.subheader("📊 Termômetro da Carteira (Antes do Aporte)")
         
-        # Máscara visual bonita ("26,20%") mantendo a matemática do banco intacta
         st.dataframe(
             df_macro[['Categoria', 'Alvo (%)', 'Atual (%)', 'Status']].style.format({
                 'Alvo (%)': "{:.2f}%",
@@ -444,7 +446,7 @@ def render():
                 lambda x: 'color: #00C851' if '🟢' in str(x) else ('color: #ff4444' if '🔴' in str(x) else 'color: #ffbb33'), 
                 subset=['Status']
             ),
-            width='stretch',  # Atualizado para o novo padrão do Streamlit
+            width='stretch', 
             hide_index=True
         )
 
