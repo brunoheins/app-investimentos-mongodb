@@ -6,7 +6,7 @@ from utils import ler_planilha, registrar_novo_usuario, db
 # A configuração da página DEVE ser a primeira linha do app
 st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
 
-# --- CSS INJETADO PARA SIMULAR ZOOM E COMPACTAR TUDO ---
+# --- CSS INJETADO: DESIGN PREMIUM E CORREÇÃO DE RESPONSIVIDADE ---
 st.markdown("""
     <style>
         /* 1. SIMULA O ZOOM (Reduz a fonte raiz de 16px para 14px) */
@@ -14,23 +14,44 @@ st.markdown("""
         
         /* 2. COMPACTA O CORPO PRINCIPAL E TEXTOS */
         .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
-        h1 { font-size: 1.7rem !important; padding-bottom: 0.3rem !important; }
-        h2 { font-size: 1.4rem !important; }
+        h1 { font-size: 1.7rem !important; padding-bottom: 0.3rem !important; font-weight: 600 !important; }
+        h2 { font-size: 1.4rem !important; font-weight: 500 !important; }
         h3 { font-size: 1.15rem !important; }
         p, div, span, label { font-size: 0.95rem !important; }
         
-        /* 3. ESPREME A BARRA LATERAL AO MÁXIMO E CORRIGE A LINHA */
-        [data-testid="stSidebar"] { padding-top: 0.5rem !important; width: 17rem !important; min-width: 17rem !important; transition: background-color 0.3s ease; }
+        /* 3. MENU LATERAL FLUIDO (Removido o gesso da largura fixa) */
+        [data-testid="stSidebar"] { padding-top: 0.5rem !important; transition: background-color 0.3s ease; }
         [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
-        
-        /* Reduz o espaço entre os botões de navegação */
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
         [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
-        
-        /* Ajusta o botão de Sair (Deixando apenas a linha nativa do Streamlit) */
         [data-testid="stSidebarUserContent"] { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
         [data-testid="stSidebarUserContent"] .stButton { margin-top: 0rem !important; }
         [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
+
+        /* 4. VISUAL PREMIUM PARA MÉTRICAS (Efeito Card) */
+        [data-testid="stMetric"] {
+            background-color: rgba(128, 128, 128, 0.05); /* Fundo sutil adaptável (Light/Dark) */
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        [data-testid="stMetricLabel"] { font-weight: 600 !important; color: gray !important; }
+        
+        /* 5. VISUAL PREMIUM PARA BOTÕES (Arredondamento e Flutuação) */
+        .stButton > button {
+            border-radius: 6px !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        .stButton > button:hover {
+            transform: translateY(-2px); /* Efeito flutuar */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* 6. TABS (Abas mais limpas) */
+        .stTabs [data-baseweb="tab-list"] { gap: 1rem; }
+        .stTabs [data-baseweb="tab"] { padding: 0.5rem 1rem; border-radius: 4px 4px 0 0; }
+        
     </style>
 """, unsafe_allow_html=True)
 
@@ -188,14 +209,12 @@ def painel_admin():
             df_users = pd.DataFrame(usuarios)
             df_users.rename(columns={"_id": "Email", "nome": "Nome", "status": "Status"}, inplace=True)
             
-            # --- BLINDAGEM DO ERRO (NORMALIZAÇÃO DE TEXTO) ---
             if 'Status' not in df_users.columns:
                 df_users['Status'] = 'Pendente'
             
             df_users['Status'] = df_users['Status'].fillna('Pendente').astype(str).str.strip().str.capitalize()
             df_users['Status'] = df_users['Status'].apply(lambda x: x if x in ["Ativo", "Revogado", "Pendente"] else "Pendente")
             
-            # --- FERRAMENTAS DE PESQUISA E FILTRO ---
             col_busca, col_filtro = st.columns([2, 1])
             termo_busca = col_busca.text_input("🔎 Pesquisar por Nome ou E-mail:", "")
             filtro_status = col_filtro.selectbox("🏷️ Filtrar por Status:", ["Todos", "Pendente", "Ativo", "Revogado"])
@@ -213,7 +232,6 @@ def painel_admin():
             st.markdown(f"**Resultados encontrados: {len(df_users)}**")
             st.markdown("---")
             
-            # --- RENDERIZAÇÃO DA LISTA FILTRADA ---
             if df_users.empty:
                 st.info("Nenhum usuário encontrado com os filtros atuais.")
             else:
@@ -281,15 +299,39 @@ else:
     # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
     # =========================================================
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
-        # Apenas muda a cor e a borda. Sem truques de altura ou teleporte!
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
+                    padding-top: 4.5rem !important; 
+                }
+                .admin-badge {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%; /* Largura fluida para respeitar o abre/fecha do Streamlit */
+                    background-color: #ff4444;
+                    color: white;
+                    padding: 0.8rem 0.5rem;
+                    text-align: center;
+                    font-size: 0.95rem;
+                    line-height: 1.4;
+                    z-index: 999999;
+                    border-bottom: 3px solid #b30000;
+                }
+                div:has(> .admin-badge) {
+                    height: 0px !important;
+                    margin: 0px !important;
+                    padding: 0px !important;
                 }
             </style>
         """, unsafe_allow_html=True)
+        
+        st.sidebar.markdown(
+            f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
+            unsafe_allow_html=True
+        )
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
@@ -312,17 +354,6 @@ else:
     })
     
     pg.run()
-
-    # Aviso Renderizado Limpo e Estável (Exclusivo da Personificação)
-    if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
-        st.sidebar.markdown(
-            f"""
-            <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 5px; text-align: center; margin-bottom: 0.8rem;'>
-                ⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
