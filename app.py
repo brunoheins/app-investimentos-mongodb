@@ -19,7 +19,7 @@ st.markdown("""
         h3 { font-size: 1.15rem !important; }
         p, div, span, label { font-size: 0.95rem !important; }
         
-        /* 3. MENU LATERAL FLUIDO (Removido o gesso da largura fixa) */
+        /* 3. MENU LATERAL FLUIDO (Sem larguras fixas forçadas) */
         [data-testid="stSidebar"] { padding-top: 0.5rem !important; transition: background-color 0.3s ease; }
         [data-testid="stSidebarNav"] { padding-top: 0rem !important; padding-bottom: 0.5rem !important; }
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
@@ -30,7 +30,7 @@ st.markdown("""
 
         /* 4. VISUAL PREMIUM PARA MÉTRICAS (Efeito Card) */
         [data-testid="stMetric"] {
-            background-color: rgba(128, 128, 128, 0.05); /* Fundo sutil adaptável (Light/Dark) */
+            background-color: rgba(128, 128, 128, 0.05);
             border: 1px solid rgba(128, 128, 128, 0.2);
             padding: 0.8rem 1rem;
             border-radius: 8px;
@@ -44,7 +44,7 @@ st.markdown("""
             transition: all 0.2s ease-in-out !important;
         }
         .stButton > button:hover {
-            transform: translateY(-2px); /* Efeito flutuar */
+            transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         
@@ -299,39 +299,15 @@ else:
     # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
     # =========================================================
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
+        # Apenas pinta o menu de vermelho e põe borda vermelha (sem quebrar a largura ou ocultar botões)
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
-                    padding-top: 4.5rem !important; 
-                }
-                .admin-badge {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%; /* Largura fluida para respeitar o abre/fecha do Streamlit */
-                    background-color: #ff4444;
-                    color: white;
-                    padding: 0.8rem 0.5rem;
-                    text-align: center;
-                    font-size: 0.95rem;
-                    line-height: 1.4;
-                    z-index: 999999;
-                    border-bottom: 3px solid #b30000;
-                }
-                div:has(> .admin-badge) {
-                    height: 0px !important;
-                    margin: 0px !important;
-                    padding: 0px !important;
                 }
             </style>
         """, unsafe_allow_html=True)
-        
-        st.sidebar.markdown(
-            f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
-            unsafe_allow_html=True
-        )
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
@@ -354,6 +330,17 @@ else:
     })
     
     pg.run()
+
+    # RENDERIZA O AVISO DE FORMA NATIVA (Fica logo acima do botão Sair)
+    if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
+        st.sidebar.markdown(
+            f"""
+            <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 6px; text-align: center; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                ⚠️ <b>MODO ADMIN</b><br>Vendo como:<br><b>{st.session_state.nome}</b>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
