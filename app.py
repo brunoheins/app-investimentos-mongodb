@@ -27,7 +27,7 @@ st.markdown("""
         [data-testid="stSidebarNav"] ul { padding-top: 0rem !important; margin-bottom: 0rem !important; gap: 0px !important; }
         [data-testid="stSidebarNav"] a { padding-top: 0.15rem !important; padding-bottom: 0.15rem !important; }
         
-        /* Ajusta o botão de Sair */
+        /* Ajusta o botão de Sair (Deixando apenas a linha nativa do Streamlit) */
         [data-testid="stSidebarUserContent"] { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
         [data-testid="stSidebarUserContent"] .stButton { margin-top: 0rem !important; }
         [data-testid="stSidebarUserContent"] .stButton button { min-height: 2rem !important; padding: 0rem !important; }
@@ -178,10 +178,10 @@ def tela_acesso():
 def painel_admin():
     st.title("🛠️ Painel do Administrador")
     
-    tab_gestao, tab_impersonar = st.tabs(["👥 Gestão de Acessos", "🎭 Visualizar Como (Impersonação)"])
+    tab_gestao, tab_personificar = st.tabs(["👥 Gestão de Acessos", "🎭 Visualizar Como (Personificar)"])
     
     with tab_gestao:
-        st.markdown("Gerencie a liberação ou revogação de acessos ao sistema.")
+        st.markdown("Pesquise e gerencie a liberação ou revogação de acessos ao sistema.")
         usuarios = list(db.usuarios.find({}, {"_id": 1, "nome": 1, "status": 1}))
         
         if usuarios:
@@ -196,51 +196,56 @@ def painel_admin():
             df_users['Status'] = df_users['Status'].fillna('Pendente').astype(str).str.strip().str.capitalize()
             df_users['Status'] = df_users['Status'].apply(lambda x: x if x in ["Ativo", "Revogado", "Pendente"] else "Pendente")
             
-            # --- PENDENTES ---
-            st.markdown("<br>**⏳ Aguardando Liberação**", unsafe_allow_html=True)
-            pendentes = df_users[df_users['Status'] == 'Pendente']
+            # --- FERRAMENTAS DE PESQUISA E FILTRO ---
+            col_busca, col_filtro = st.columns([2, 1])
+            termo_busca = col_busca.text_input("🔎 Pesquisar por Nome ou E-mail:", "")
+            filtro_status = col_filtro.selectbox("🏷️ Filtrar por Status:", ["Todos", "Pendente", "Ativo", "Revogado"])
             
-            if pendentes.empty:
-                st.info("Nenhum usuário aguardando aprovação no momento.")
-            else:
-                for _, row in pendentes.iterrows():
-                    c1, c2, c3 = st.columns([3, 1, 1])
-                    c1.markdown(f"**{row['Nome']}** <span style='color:gray; font-size:0.85em;'>({row['Email']})</span>", unsafe_allow_html=True)
-                    if c2.button("✅ Ativar", key=f"ativar_{row['Email']}", use_container_width=True):
-                        db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": "Ativo"}})
-                        st.rerun()
-                    if c3.button("❌ Revogar", key=f"revogar_{row['Email']}", use_container_width=True):
-                        db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": "Revogado"}})
-                        st.rerun()
-                        
+            # Aplicando o Filtro de Status
+            if filtro_status != "Todos":
+                df_users = df_users[df_users['Status'] == filtro_status]
+                
+            # Aplicando a Pesquisa de Texto Livre
+            if termo_busca:
+                termo = termo_busca.lower()
+                df_users = df_users[
+                    df_users['Nome'].str.lower().str.contains(termo, na=False) | 
+                    df_users['Email'].str.lower().str.contains(termo, na=False)
+                ]
+            
+            st.markdown(f"**Resultados encontrados: {len(df_users)}**")
             st.markdown("---")
             
-            # --- ATIVOS / REVOGADOS ---
-            st.markdown("**📋 Base de Usuários**")
-            outros = df_users[df_users['Status'] != 'Pendente']
-            
-            for _, row in outros.iterrows():
-                if row['Email'] == st.session_state.get('admin_email'): 
-                    continue 
-                
-                c_info, c_status = st.columns([3, 2])
-                c_info.markdown(f"{row['Nome']} <span style='color:gray; font-size:0.85em;'>({row['Email']})</span>", unsafe_allow_html=True)
-                
-                # Agora o row['Status'] sempre terá os nomes corretos graças à blindagem acima
-                novo_status = c_status.selectbox(
-                    "Status", 
-                    options=["Ativo", "Revogado", "Pendente"], 
-                    index=["Ativo", "Revogado", "Pendente"].index(row['Status']),
-                    key=f"status_{row['Email']}",
-                    label_visibility="collapsed"
-                )
-                
-                if novo_status != row['Status']:
-                    # O banco salva a string com a mesma capitalização "Ativo", "Pendente", "Revogado"
-                    db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": novo_status}})
-                    st.rerun()
+            # --- RENDERIZAÇÃO DA LISTA FILTRADA ---
+            if df_users.empty:
+                st.info("Nenhum usuário encontrado com os filtros atuais.")
+            else:
+                for _, row in df_users.iterrows():
+                    c_info, c_status = st.columns([3, 2])
+                    c_info.markdown(f"**{row['Nome']}** <br><span style='color:gray; font-size:0.85em;'>{row['Email']}</span>", unsafe_allow_html=True)
                     
-    with tab_impersonar:
+                    # Proteção para o Admin não revogar o próprio acesso sem querer
+                    if row['Email'] == st.session_state.get('admin_email'): 
+                        c_status.info("Seu Usuário (Admin)")
+                    else:
+                        novo_status = c_status.selectbox(
+                            "Status", 
+                            options=["Ativo", "Revogado", "Pendente"], 
+                            index=["Ativo", "Revogado", "Pendente"].index(row['Status']),
+                            key=f"status_gestao_{row['Email']}",
+                            label_visibility="collapsed"
+                        )
+                        
+                        if novo_status != row['Status']:
+                            db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": novo_status}})
+                            st.toast(f"Status de {row['Nome']} alterado para {novo_status}!", icon="✅")
+                            time.sleep(1) # Dá tempo para ler o toast antes de recarregar
+                            st.rerun()
+                            
+                    # Linha pontilhada para separar melhor no caso de muitos registros
+                    st.markdown("<hr style='margin: 0.5em 0; border: 0; border-top: 1px dashed #444;'>", unsafe_allow_html=True)
+                    
+    with tab_personificar:
         st.markdown("Selecione um usuário abaixo para visualizar o sistema como se fosse ele. Suas permissões de alteração continuarão bloqueadas.")
         st.info("💡 **Dica:** Clique na caixa e **comece a digitar** o nome ou e-mail.")
         
@@ -253,7 +258,7 @@ def painel_admin():
             current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
             
             escolha = st.selectbox(
-                "🔎 Buscar usuário:", 
+                "🔎 Buscar usuário para personificar:", 
                 options=emails_list, 
                 format_func=lambda x: opcoes[x],
                 index=current_idx
@@ -278,7 +283,7 @@ else:
         st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
 
     # =========================================================
-    # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN/IMPERSONAÇÃO
+    # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
     # =========================================================
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
         st.markdown("""
