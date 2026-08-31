@@ -192,7 +192,6 @@ def painel_admin():
             if 'Status' not in df_users.columns:
                 df_users['Status'] = 'Pendente'
             
-            # Garante que o texto fique limpo (ex: "ativo" vira "Ativo") e padroniza falhas
             df_users['Status'] = df_users['Status'].fillna('Pendente').astype(str).str.strip().str.capitalize()
             df_users['Status'] = df_users['Status'].apply(lambda x: x if x in ["Ativo", "Revogado", "Pendente"] else "Pendente")
             
@@ -201,11 +200,9 @@ def painel_admin():
             termo_busca = col_busca.text_input("🔎 Pesquisar por Nome ou E-mail:", "")
             filtro_status = col_filtro.selectbox("🏷️ Filtrar por Status:", ["Todos", "Pendente", "Ativo", "Revogado"])
             
-            # Aplicando o Filtro de Status
             if filtro_status != "Todos":
                 df_users = df_users[df_users['Status'] == filtro_status]
                 
-            # Aplicando a Pesquisa de Texto Livre
             if termo_busca:
                 termo = termo_busca.lower()
                 df_users = df_users[
@@ -224,7 +221,6 @@ def painel_admin():
                     c_info, c_status = st.columns([3, 2])
                     c_info.markdown(f"**{row['Nome']}** <br><span style='color:gray; font-size:0.85em;'>{row['Email']}</span>", unsafe_allow_html=True)
                     
-                    # Proteção para o Admin não revogar o próprio acesso sem querer
                     if row['Email'] == st.session_state.get('admin_email'): 
                         c_status.info("Seu Usuário (Admin)")
                     else:
@@ -239,10 +235,9 @@ def painel_admin():
                         if novo_status != row['Status']:
                             db.usuarios.update_one({"_id": row['Email']}, {"$set": {"status": novo_status}})
                             st.toast(f"Status de {row['Nome']} alterado para {novo_status}!", icon="✅")
-                            time.sleep(1) # Dá tempo para ler o toast antes de recarregar
+                            time.sleep(1) 
                             st.rerun()
                             
-                    # Linha pontilhada para separar melhor no caso de muitos registros
                     st.markdown("<hr style='margin: 0.5em 0; border: 0; border-top: 1px dashed #444;'>", unsafe_allow_html=True)
                     
     with tab_personificar:
@@ -286,39 +281,15 @@ else:
     # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
     # =========================================================
     if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
+        # Apenas muda a cor e a borda. Sem truques de altura ou teleporte!
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
-                    padding-top: 4.5rem !important; 
-                }
-                .admin-badge {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 17rem; 
-                    background-color: #ff4444;
-                    color: white;
-                    padding: 0.8rem 0.5rem;
-                    text-align: center;
-                    font-size: 0.95rem;
-                    line-height: 1.4;
-                    z-index: 999999;
-                    border-bottom: 3px solid #b30000;
-                }
-                div:has(> .admin-badge) {
-                    height: 0px !important;
-                    margin: 0px !important;
-                    padding: 0px !important;
                 }
             </style>
         """, unsafe_allow_html=True)
-        
-        st.sidebar.markdown(
-            f"<div class='admin-badge'>⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b></div>", 
-            unsafe_allow_html=True
-        )
 
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
@@ -341,6 +312,17 @@ else:
     })
     
     pg.run()
+
+    # Aviso Renderizado Limpo e Estável (Exclusivo da Personificação)
+    if st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', ''):
+        st.sidebar.markdown(
+            f"""
+            <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 5px; text-align: center; margin-bottom: 0.8rem;'>
+                ⚠️ <b>MODO ADMIN</b><br>Vendo como: <b>{st.session_state.nome}</b>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
