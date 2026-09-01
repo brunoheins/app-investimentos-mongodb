@@ -354,37 +354,35 @@ def buscar_setor_yahoo(ativo, categoria):
 
 
 # ==============================================================
-# MOTOR DE COTAÇÕES COM CACHE HÍBRIDO (STREAMLIT RAM + MONGODB)
+# MOTOR DE COTAÇÕES COM CACHE HÍBRIDO GLOBAL (STREAMLIT + MONGODB)
 # ==============================================================
 @st.cache_data(ttl=21600, show_spinner=False) # TTL da RAM de 6 horas
 def obter_cotacoes():
     cotacoes = {}
     ativos_buscados = set()
     
-    # 1. Identificar ativos apenas do usuário atual
+    # 1. VARREDURA GLOBAL: Puxa TODOS os ativos do sistema inteiro (Todos os usuários)
     try:
-        if 'email' in st.session_state:
-            email_usuario = st.session_state.email.strip().lower()
-            df_invest = ler_planilha("Investimentos")
-            df_config = ler_planilha("Ativos_Config")
-            
-            if not df_invest.empty:
-                for _, row in df_invest[df_invest['Email'].astype(str).str.lower() == email_usuario].iterrows():
-                    ativo = str(row.get('Ativo', '')).strip().upper()
-                    if ativo and ativo not in ["NAN", "NONE", ""]:
-                        ativos_buscados.add(ativo)
-                        pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
-                        if pm > 0 and ativo not in cotacoes: 
-                            cotacoes[ativo] = pm # Fallback inicial (preço médio)
+        df_invest = ler_planilha("Investimentos")
+        df_config = ler_planilha("Ativos_Config")
+        
+        if not df_invest.empty:
+            for _, row in df_invest.iterrows():
+                ativo = str(row.get('Ativo', '')).strip().upper()
+                if ativo and ativo not in ["NAN", "NONE", ""]:
+                    ativos_buscados.add(ativo)
+                    pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
+                    if pm > 0 and ativo not in cotacoes: 
+                        cotacoes[ativo] = pm # Fallback inicial (preço médio)
 
-            if not df_config.empty:
-                for _, row in df_config[df_config['Email'].astype(str).str.lower() == email_usuario].iterrows():
-                    ativo = str(row.get('Ativo', '')).strip().upper()
-                    if ativo and ativo not in ["NAN", "NONE", ""]: 
-                        ativos_buscados.add(ativo)
-                        
+        if not df_config.empty:
+            for _, row in df_config.iterrows():
+                ativo = str(row.get('Ativo', '')).strip().upper()
+                if ativo and ativo not in ["NAN", "NONE", ""]: 
+                    ativos_buscados.add(ativo)
+                    
     except Exception as e:
-        print(f"Erro ao buscar lista de ativos do usuário: {e}")
+        print(f"Erro ao buscar lista global de ativos: {e}")
         
     if not ativos_buscados: return cotacoes
 
@@ -408,7 +406,7 @@ def obter_cotacoes():
     titulos_td_pedidos = [a for a in ativos_para_atualizar if " " in a or "TESOURO" in a]
     ativos_bolsa_pedidos = [a for a in ativos_para_atualizar if a not in titulos_td_pedidos]
     
-    # --- 3A. ATUALIZAR TESOURO DIRETO (Puxando apenas os necessários) ---
+    # --- 3A. ATUALIZAR TESOURO DIRETO ---
     if titulos_td_pedidos:
         try:
             df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
@@ -428,7 +426,7 @@ def obter_cotacoes():
                     preco_td = mapa_td[titulo_norm]
                     cotacoes[titulo] = preco_td
                     
-                    # Salva no Banco para a próxima vez
+                    # Salva no Banco para a próxima vez (ISSO CRIA A TABELA)
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
@@ -436,12 +434,11 @@ def obter_cotacoes():
                     )
         except Exception as e:
             print(f"Erro no parsing do TD: {e}")
-            # Fallback: Tentar pegar o preço vencido do banco de dados para não quebrar a tela
             for titulo in titulos_td_pedidos:
                 doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
                 if doc_velho: cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
     
-    # --- 3B. ATUALIZAR BOLSA YAHOO FINANCE (Cálculo de Dólar Nativo + Feriados Blindados) ---
+    # --- 3B. ATUALIZAR BOLSA YAHOO FINANCE ---
     if ativos_bolsa_pedidos:
         tickers_yf = []
         mapa_tickers = {}
@@ -449,7 +446,6 @@ def obter_cotacoes():
         
         for ativo in ativos_bolsa_pedidos:
             ticker = ativo
-            # Adiciona ".SA" para ativos nacionais que sejam apenas letras e números
             if "." not in ticker and re.search(r'\d+$', ticker):
                 ticker = f"{ticker}.SA"
             
@@ -459,70 +455,70 @@ def obter_cotacoes():
             mapa_tickers[ticker] = ativo
             
         if tem_exterior:
-            tickers_yf.append("BRL=X") # Aciona a busca cambial junto com os ativos
+            tickers_yf.append("BRL=X")
             
         try:
-            # 5 dias protege contra buracos de liquidez, finais de semana e feriados longos
             df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False)
             
-            if not df_raw.empty:
-                # O .ffill() empurra os preços para a frente preenchendo os buracos e pegamos a última linha
-                s_last = df_raw.ffill().iloc[-1]
+            if df_raw.empty:
+                st.toast("⚠️ Yahoo Finance bloqueou a rede ou retornou vazio. Tentando usar o backup do banco...", icon="🚨")
+                raise Exception("Dataframe do YF retornou vazio.")
                 
-                # Passo A: Descobrir o Dólar se necessário
-                cotacao_dolar = 1.0
-                if tem_exterior:
-                    for p_col in ['Close', 'Adj Close']:
-                        if isinstance(s_last.index, pd.MultiIndex):
-                            if (p_col, "BRL=X") in s_last.index:
-                                cotacao_dolar = float(s_last[(p_col, "BRL=X")])
-                                break
-                            elif ("BRL=X", p_col) in s_last.index:
-                                cotacao_dolar = float(s_last[("BRL=X", p_col)])
-                                break
-                        else:
-                            if "BRL=X" in tickers_yf and len(set(tickers_yf)) == 1:
-                                cotacao_dolar = float(s_last.get(p_col, 1.0))
-                                break
-                                
-                # Passo B: Resgatar o preço e converter
-                for ticker in tickers_yf:
-                    if ticker == "BRL=X": continue
-                    
-                    preco = None
-                    for p_col in ['Close', 'Adj Close']:
-                        if isinstance(s_last.index, pd.MultiIndex):
-                            if (p_col, ticker) in s_last.index:
-                                preco = s_last[(p_col, ticker)]
-                                break
-                            elif (ticker, p_col) in s_last.index:
-                                preco = s_last[(ticker, p_col)]
-                                break
-                        else:
-                            ativos_pedidos = set([t for t in tickers_yf if t != "BRL=X"])
-                            if len(ativos_pedidos) == 1:
-                                preco = s_last.get(p_col)
-                                break
-                                
-                    if preco is not None and not pd.isna(preco):
-                        preco_float = float(preco)
-                        
-                        # Converte ativos internacionais para Reais 
-                        if not ticker.endswith(".SA"):
-                            preco_float *= cotacao_dolar
+            # O .ffill() empurra os preços para a frente preenchendo os buracos e pegamos a última linha
+            s_last = df_raw.ffill().iloc[-1]
+            
+            # Passo A: Descobrir o Dólar se necessário
+            cotacao_dolar = 1.0
+            if tem_exterior:
+                for p_col in ['Close', 'Adj Close']:
+                    if isinstance(s_last.index, pd.MultiIndex):
+                        if (p_col, "BRL=X") in s_last.index:
+                            cotacao_dolar = float(s_last[(p_col, "BRL=X")])
+                            break
+                        elif ("BRL=X", p_col) in s_last.index:
+                            cotacao_dolar = float(s_last[("BRL=X", p_col)])
+                            break
+                    else:
+                        if "BRL=X" in tickers_yf and len(set(tickers_yf)) == 1:
+                            cotacao_dolar = float(s_last.get(p_col, 1.0))
+                            break
                             
-                        ativo_original = mapa_tickers[ticker]
-                        cotacoes[ativo_original] = preco_float
+            # Passo B: Resgatar o preço e converter
+            for ticker in tickers_yf:
+                if ticker == "BRL=X": continue
+                
+                preco = None
+                for p_col in ['Close', 'Adj Close']:
+                    if isinstance(s_last.index, pd.MultiIndex):
+                        if (p_col, ticker) in s_last.index:
+                            preco = s_last[(p_col, ticker)]
+                            break
+                        elif (ticker, p_col) in s_last.index:
+                            preco = s_last[(ticker, p_col)]
+                            break
+                    else:
+                        ativos_pedidos = set([t for t in tickers_yf if t != "BRL=X"])
+                        if len(ativos_pedidos) == 1:
+                            preco = s_last.get(p_col)
+                            break
+                            
+                if preco is not None and not pd.isna(preco):
+                    preco_float = float(preco)
+                    
+                    if not ticker.endswith(".SA"):
+                        preco_float *= cotacao_dolar
                         
-                        # Salva o preço fresco e convertido no MongoDB
-                        db.cotacoes_cache.update_one(
-                            {"_id": ativo_original},
-                            {"$set": {"preco": preco_float, "ultima_atualizacao": agora}},
-                            upsert=True
-                        )
+                    ativo_original = mapa_tickers[ticker]
+                    cotacoes[ativo_original] = preco_float
+                    
+                    # Salva o preço no MongoDB (ISSO CRIA A TABELA)
+                    db.cotacoes_cache.update_one(
+                        {"_id": ativo_original},
+                        {"$set": {"preco": preco_float, "ultima_atualizacao": agora}},
+                        upsert=True
+                    )
         except Exception as e:
-            print(f"Alerta na API YF: {e}")
-            # Fallback de Segurança: Em caso de banimento temporário de IP, pega do banco
+            # Fallback em caso de erro da API
             for ativo in ativos_bolsa_pedidos:
                 doc_velho = db.cotacoes_cache.find_one({"_id": ativo})
                 if doc_velho: cotacoes[ativo] = doc_velho.get("preco", cotacoes.get(ativo, 0.0))
