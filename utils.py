@@ -354,38 +354,36 @@ def buscar_setor_yahoo(ativo, categoria):
 
 
 # ==============================================================
-# MOTOR DE COTAÇÕES 100% SOB DEMANDA (MONGODB CACHE)
+# MOTOR DE COTAÇÕES 100% SOB DEMANDA COM CACHE DE RAM ISOLADO
 # ==============================================================
-# 🚨 NOTA: Removemos o @st.cache_data! O MongoDB agora é o nosso cache oficial.
-def obter_cotacoes():
+@st.cache_data(ttl=3600, show_spinner=False) # DEVOLVENDO A MEMÓRIA RAM SUPER RÁPIDA (1 HORA)
+def obter_cotacoes(email_usuario):
     cotacoes = {}
     ativos_buscados = set()
     
-    # 1. VARREDURA LOCAL: Puxa APENAS os ativos do usuário logado agora
+    # 1. VARREDURA LOCAL: Puxa APENAS os ativos do usuário solicitado
     try:
-        if 'email' in st.session_state:
-            email_usuario = st.session_state.email.strip().lower()
-            df_invest = ler_planilha("Investimentos")
-            df_config = ler_planilha("Ativos_Config")
-            
-            if not df_invest.empty:
-                # Filtra a planilha geral apenas para o dono da sessão
-                df_user = df_invest[df_invest['Email'].astype(str).str.lower() == email_usuario]
-                for _, row in df_user.iterrows():
-                    ativo = str(row.get('Ativo', '')).strip().upper()
-                    if ativo and ativo not in ["NAN", "NONE", ""]:
-                        ativos_buscados.add(ativo)
-                        pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
-                        if pm > 0 and ativo not in cotacoes: 
-                            cotacoes[ativo] = pm # Fallback inicial (preço médio)
+        e_lower = email_usuario.strip().lower()
+        df_invest = ler_planilha("Investimentos")
+        df_config = ler_planilha("Ativos_Config")
+        
+        if not df_invest.empty:
+            df_user = df_invest[df_invest['Email'].astype(str).str.lower() == e_lower]
+            for _, row in df_user.iterrows():
+                ativo = str(row.get('Ativo', '')).strip().upper()
+                if ativo and ativo not in ["NAN", "NONE", ""]:
+                    ativos_buscados.add(ativo)
+                    pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
+                    if pm > 0 and ativo not in cotacoes: 
+                        cotacoes[ativo] = pm
 
-            if not df_config.empty:
-                df_user_conf = df_config[df_config['Email'].astype(str).str.lower() == email_usuario]
-                for _, row in df_user_conf.iterrows():
-                    ativo = str(row.get('Ativo', '')).strip().upper()
-                    if ativo and ativo not in ["NAN", "NONE", ""]: 
-                        ativos_buscados.add(ativo)
-                        
+        if not df_config.empty:
+            df_user_conf = df_config[df_config['Email'].astype(str).str.lower() == e_lower]
+            for _, row in df_user_conf.iterrows():
+                ativo = str(row.get('Ativo', '')).strip().upper()
+                if ativo and ativo not in ["NAN", "NONE", ""]: 
+                    ativos_buscados.add(ativo)
+                    
     except Exception as e:
         print(f"Erro ao buscar lista de ativos do usuário: {e}")
         
@@ -396,18 +394,15 @@ def obter_cotacoes():
     
     ativos_para_atualizar = []
     
-    # 2. CONSULTA CIRÚRGICA NO BANCO: Olha só os ativos dessa pessoa
+    # 2. CONSULTA CIRÚRGICA NO BANCO
     for ativo in ativos_buscados:
         doc = db.cotacoes_cache.find_one({"_id": ativo})
         
-        # Se existe no banco E tem menos de 1 hora, usa o preço salvo! (ZERO requisições ao Yahoo)
         if doc and doc.get("ultima_atualizacao", datetime.min) > limite_tempo:
             cotacoes[ativo] = doc.get("preco", 0.0)
         else:
-            # Só cai aqui o que é novo ou passou de 1 hora
             ativos_para_atualizar.append(ativo)
             
-    # Se todos os ativos da pessoa já estavam frescos no banco, encerra a função na hora
     if not ativos_para_atualizar:
         return cotacoes
         
@@ -435,14 +430,12 @@ def obter_cotacoes():
                     preco_td = mapa_td[titulo_norm]
                     cotacoes[titulo] = preco_td
                     
-                    # Salva no Banco para a próxima vez
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
                         upsert=True
                     )
         except Exception as e:
-            print(f"Erro no parsing do TD: {e}")
             for titulo in titulos_td_pedidos:
                 doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
                 if doc_velho: cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
@@ -467,12 +460,11 @@ def obter_cotacoes():
             tickers_yf.append("BRL=X")
             
         try:
-            # Só os ativos velhos vão para a rede
             df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False)
             
             if df_raw.empty:
-                st.toast("⚠️ Yahoo Finance bloqueou a rede ou retornou vazio. Tentando usar o backup do banco...", icon="🚨")
-                raise Exception("Dataframe do YF retornou vazio.")
+                st.toast("⚠️ Yahoo Finance não retornou dados. Usando backup.", icon="🚨")
+                raise Exception("YF vazio.")
                 
             s_last = df_raw.ffill().iloc[-1]
             
@@ -518,7 +510,6 @@ def obter_cotacoes():
                     ativo_original = mapa_tickers[ticker]
                     cotacoes[ativo_original] = preco_float
                     
-                    # Salva no Banco para todos aproveitarem
                     db.cotacoes_cache.update_one(
                         {"_id": ativo_original},
                         {"$set": {"preco": preco_float, "ultima_atualizacao": agora}},
