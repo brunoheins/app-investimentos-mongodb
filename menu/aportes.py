@@ -63,7 +63,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     df_ativos_conf['Email'] = df_ativos_conf['Email'].astype(str).str.strip().str.lower()
     df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email].copy()
     
-    cotacoes_dict = obter_cotacoes()
+    cotacoes_dict = obter_cotacoes(st.session_state.email)
 
     # --- 1. LER ATIVOS ALVOS OFICIAIS ---
     ativos_alvos = []
