@@ -354,51 +354,60 @@ def buscar_setor_yahoo(ativo, categoria):
 
 
 # ==============================================================
-# MOTOR DE COTAÇÕES COM CACHE HÍBRIDO GLOBAL (STREAMLIT + MONGODB)
+# MOTOR DE COTAÇÕES 100% SOB DEMANDA (MONGODB CACHE)
 # ==============================================================
-@st.cache_data(ttl=21600, show_spinner=False) # TTL da RAM de 6 horas
+# 🚨 NOTA: Removemos o @st.cache_data! O MongoDB agora é o nosso cache oficial.
 def obter_cotacoes():
     cotacoes = {}
     ativos_buscados = set()
     
-    # 1. VARREDURA GLOBAL: Puxa TODOS os ativos do sistema inteiro (Todos os usuários)
+    # 1. VARREDURA LOCAL: Puxa APENAS os ativos do usuário logado agora
     try:
-        df_invest = ler_planilha("Investimentos")
-        df_config = ler_planilha("Ativos_Config")
-        
-        if not df_invest.empty:
-            for _, row in df_invest.iterrows():
-                ativo = str(row.get('Ativo', '')).strip().upper()
-                if ativo and ativo not in ["NAN", "NONE", ""]:
-                    ativos_buscados.add(ativo)
-                    pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
-                    if pm > 0 and ativo not in cotacoes: 
-                        cotacoes[ativo] = pm # Fallback inicial (preço médio)
+        if 'email' in st.session_state:
+            email_usuario = st.session_state.email.strip().lower()
+            df_invest = ler_planilha("Investimentos")
+            df_config = ler_planilha("Ativos_Config")
+            
+            if not df_invest.empty:
+                # Filtra a planilha geral apenas para o dono da sessão
+                df_user = df_invest[df_invest['Email'].astype(str).str.lower() == email_usuario]
+                for _, row in df_user.iterrows():
+                    ativo = str(row.get('Ativo', '')).strip().upper()
+                    if ativo and ativo not in ["NAN", "NONE", ""]:
+                        ativos_buscados.add(ativo)
+                        pm = extrair_numero_br(row.get('PrecoMedio', row.get('Preco', 0)))
+                        if pm > 0 and ativo not in cotacoes: 
+                            cotacoes[ativo] = pm # Fallback inicial (preço médio)
 
-        if not df_config.empty:
-            for _, row in df_config.iterrows():
-                ativo = str(row.get('Ativo', '')).strip().upper()
-                if ativo and ativo not in ["NAN", "NONE", ""]: 
-                    ativos_buscados.add(ativo)
-                    
+            if not df_config.empty:
+                df_user_conf = df_config[df_config['Email'].astype(str).str.lower() == email_usuario]
+                for _, row in df_user_conf.iterrows():
+                    ativo = str(row.get('Ativo', '')).strip().upper()
+                    if ativo and ativo not in ["NAN", "NONE", ""]: 
+                        ativos_buscados.add(ativo)
+                        
     except Exception as e:
-        print(f"Erro ao buscar lista global de ativos: {e}")
+        print(f"Erro ao buscar lista de ativos do usuário: {e}")
         
     if not ativos_buscados: return cotacoes
 
     agora = datetime.now()
-    limite_tempo = agora - timedelta(hours=6)
+    limite_tempo = agora - timedelta(hours=1)
     
     ativos_para_atualizar = []
     
-    # 2. Bater no MongoDB: Quem tem preço fresquinho (< 6h) vai direto pra tela
+    # 2. CONSULTA CIRÚRGICA NO BANCO: Olha só os ativos dessa pessoa
     for ativo in ativos_buscados:
         doc = db.cotacoes_cache.find_one({"_id": ativo})
+        
+        # Se existe no banco E tem menos de 1 hora, usa o preço salvo! (ZERO requisições ao Yahoo)
         if doc and doc.get("ultima_atualizacao", datetime.min) > limite_tempo:
             cotacoes[ativo] = doc.get("preco", 0.0)
         else:
+            # Só cai aqui o que é novo ou passou de 1 hora
             ativos_para_atualizar.append(ativo)
             
+    # Se todos os ativos da pessoa já estavam frescos no banco, encerra a função na hora
     if not ativos_para_atualizar:
         return cotacoes
         
@@ -426,7 +435,7 @@ def obter_cotacoes():
                     preco_td = mapa_td[titulo_norm]
                     cotacoes[titulo] = preco_td
                     
-                    # Salva no Banco para a próxima vez (ISSO CRIA A TABELA)
+                    # Salva no Banco para a próxima vez
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
@@ -458,16 +467,15 @@ def obter_cotacoes():
             tickers_yf.append("BRL=X")
             
         try:
+            # Só os ativos velhos vão para a rede
             df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False)
             
             if df_raw.empty:
                 st.toast("⚠️ Yahoo Finance bloqueou a rede ou retornou vazio. Tentando usar o backup do banco...", icon="🚨")
                 raise Exception("Dataframe do YF retornou vazio.")
                 
-            # O .ffill() empurra os preços para a frente preenchendo os buracos e pegamos a última linha
             s_last = df_raw.ffill().iloc[-1]
             
-            # Passo A: Descobrir o Dólar se necessário
             cotacao_dolar = 1.0
             if tem_exterior:
                 for p_col in ['Close', 'Adj Close']:
@@ -483,7 +491,6 @@ def obter_cotacoes():
                             cotacao_dolar = float(s_last.get(p_col, 1.0))
                             break
                             
-            # Passo B: Resgatar o preço e converter
             for ticker in tickers_yf:
                 if ticker == "BRL=X": continue
                 
@@ -511,20 +518,19 @@ def obter_cotacoes():
                     ativo_original = mapa_tickers[ticker]
                     cotacoes[ativo_original] = preco_float
                     
-                    # Salva o preço no MongoDB (ISSO CRIA A TABELA)
+                    # Salva no Banco para todos aproveitarem
                     db.cotacoes_cache.update_one(
                         {"_id": ativo_original},
                         {"$set": {"preco": preco_float, "ultima_atualizacao": agora}},
                         upsert=True
                     )
         except Exception as e:
-            # Fallback em caso de erro da API
             for ativo in ativos_bolsa_pedidos:
                 doc_velho = db.cotacoes_cache.find_one({"_id": ativo})
                 if doc_velho: cotacoes[ativo] = doc_velho.get("preco", cotacoes.get(ativo, 0.0))
 
     return cotacoes
-
+    
 
 @st.cache_data(ttl=300, show_spinner=False)
 def obter_ativos_por_categoria(email_usuario):
