@@ -18,7 +18,7 @@ def render():
             dados_usuario['Quantidade'] = dados_usuario['Quantidade'].apply(extrair_numero_br)
             dados_usuario['PrecoMedio'] = dados_usuario['PrecoMedio'].apply(extrair_numero_br)
             
-            cotacoes_dict = obter_cotacoes()
+            cotacoes_dict = obter_cotacoes(st.session_state.email)
             dados_usuario['PrecoLive'] = dados_usuario['Ativo'].map(cotacoes_dict).fillna(0.0)
             
             dados_usuario['PrecoAtual'] = dados_usuario.apply(
