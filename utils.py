@@ -26,8 +26,6 @@ def init_connection():
         st.stop()
 
 db = init_connection()
-# TESTE FORÇADO: Isso deve criar a tabela na hora em que o app ligar
-db.cotacoes_cache.update_one({"_id": "TESTE_SISTEMA"}, {"$set": {"preco": 10.0, "ultima_atualizacao": datetime.now()}}, upsert=True)
 
 # ==========================================
 # 2. FUNÇÕES DE FORMATAÇÃO E LIMPEZA
