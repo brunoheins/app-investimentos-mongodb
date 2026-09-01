@@ -141,7 +141,7 @@ def render():
                 else:
                     df_user_inv['PrecoCusto'] = 0.0
                 
-                cotacoes_dict = obter_cotacoes()
+                cotacoes_dict = obter_cotacoes(st.session_state.email)
                 df_user_inv['PrecoLive'] = df_user_inv['Ativo'].map(cotacoes_dict).fillna(0.0)
                 
                 df_user_inv['TemCotacao'] = df_user_inv['PrecoLive'] > 0
