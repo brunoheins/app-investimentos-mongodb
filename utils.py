@@ -420,16 +420,16 @@ def obter_cotacoes(email_usuario):
             # TESOURO IPCA+ 2032 -> TESOUROIPCA2032
             return re.sub(r'[^A-Z0-9]', '', str(nome).upper())
 
-        # 1. Usando a MESMA configuração de disfarce do seu Google Apps Script
+        # 1. Configuração de disfarce para evitar bloqueios
         headers_td = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest"
         }
         
-        # 2. URLs que o seu script confirmou que funcionam
+        # 2. Busca na API
         urls_para_tentar = [
-            "https://tesouro.gabriso.com/bonds",
-            "https://api.radaropcoes.com/bonds.json"
+            "https://tesouro.gabriso.com/bonds"#,
+            #"https://api.radaropcoes.com/bonds.json"
         ]
         
         sucesso_api = False
@@ -448,45 +448,39 @@ def obter_cotacoes(email_usuario):
                             nome_original = str(bond.get("name", ""))
                             chave_limpa = normalizar_nome_td(nome_original)
                             
-                            # Usa a nossa super função blindada para lidar com vírgulas/pontos/strings
                             preco_resgate = bond.get("unitary_redemption_value", 0.0)
                             preco = extrair_numero_br(preco_resgate)
                             
                             if chave_limpa and preco > 0:
                                 mapa_td_limpo[chave_limpa] = preco
                         
-                        sucesso_api = True # Deu certo, não precisa tentar a URL reserva
-            except Exception as e:
-                print(f"Erro ao acessar {url}: {e}")
-                
-        if not sucesso_api:
-            st.toast("⚠️ O Tesouro Direto não respondeu. Tentando usar o backup do banco...", icon="🚨")
+                        sucesso_api = True
+            except:
+                pass # Silencia qualquer erro de conexão
 
-        # 3. Cruza com a sua carteira e salva
+        # 3. Cruza com a carteira, atualiza o banco ou usa o Backup Silencioso
         for titulo in titulos_td_pedidos:
             chave_busca = normalizar_nome_td(titulo)
             
             if chave_busca in mapa_td_limpo:
+                # Preço fresco da API
                 preco_td = mapa_td_limpo[chave_busca]
                 cotacoes[titulo] = preco_td
                 
-                # Salva o preço no MongoDB 
+                # Salva o preço fresco no MongoDB como Backup
                 try:
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
                         upsert=True
                     )
-                except Exception as db_err:
-                    print(f"Erro ao salvar TD no Mongo: {db_err}")
+                except:
+                    pass
             else:
-                # Se não veio na API, puxa do MongoDB antigo
+                # FALLBACK INVISÍVEL: Se a API falhou ou não achou, resgata a última cotação do banco
                 doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
                 if doc_velho: 
                     cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
-                else:
-                    # Se não achou na API e não achou no banco, avisa na tela!
-                    st.toast(f"❌ Título TD não encontrado na base: {titulo}", icon="🔍")
     
     # --- 3B. ATUALIZAR BOLSA YAHOO FINANCE ---
     if ativos_bolsa_pedidos:
