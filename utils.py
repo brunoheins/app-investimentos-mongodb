@@ -696,6 +696,128 @@ def obter_historico_benchmarks(mes_inicial, mes_final):
         print(f"Erro ao salvar benchmarks no Mongo: {e}")
 
     return resultado_dict
+
+# ==============================================================
+# MOTOR DE DIVIDENDOS COM CACHE GLOBAL NO MONGODB (D-0)
+# ==============================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def buscar_historico_dividendos(df_transacoes):
+    hoje = pd.Timestamp.today().tz_localize(None)
+    um_ano_atras = hoje - pd.DateOffset(months=12)
+    dois_anos_atras = hoje - pd.DateOffset(months=24) # Margem de segurança para o banco
+    
+    dados_dividendos = []
+    ativos_com_erro = []
+
+    # Localiza a coluna de Data dinamicamente
+    col_data = next((c for c in df_transacoes.columns if 'dat' in str(c).lower()), None)
+    
+    if col_data:
+        df_transacoes['Data_Calc'] = pd.to_datetime(df_transacoes[col_data], format='%d/%m/%Y', errors='coerce')
+    else:
+        df_transacoes['Data_Calc'] = pd.to_datetime('2000-01-01')
+
+    # Remove linhas onde a data não pôde ser lida
+    df_transacoes = df_transacoes.dropna(subset=['Data_Calc'])
+    ativos = df_transacoes['Ativo'].unique()
+
+    agora = datetime.now()
+    hoje_zero_hora = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    for ativo in ativos:
+        df_ativo_tx = df_transacoes[df_transacoes['Ativo'] == ativo]
+
+        # Normaliza o ticker para a B3
+        ticker_yf = ativo
+        if "." not in ticker_yf and re.search(r'\d+$', ticker_yf):
+            ticker_yf = f"{ticker_yf}.SA"
+
+        divs = pd.Series(dtype=float)
+
+        try:
+            # 1. VERIFICA O MONGODB PRIMEIRO (Cache D-0)
+            doc_cache = db.dividendos_cache.find_one({"_id": ticker_yf})
+            
+            # Se já foi atualizado hoje, puxa do banco instantaneamente
+            if doc_cache and doc_cache.get("ultima_atualizacao", datetime.min) >= hoje_zero_hora:
+                divs_dict = doc_cache.get("dividendos", {})
+                if divs_dict:
+                    # Reconstrói a série temporal do Pandas
+                    divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
+            else:
+                # 2. SE NÃO TEM OU ESTÁ VELHO, BATE NO YAHOO FINANCE
+                ticker = yf.Ticker(ticker_yf)
+                divs_raw = ticker.dividends 
+                
+                if not divs_raw.empty:
+                    divs_raw.index = divs_raw.index.tz_localize(None)
+                    
+                    # Salva os últimos 2 anos no banco para não pesar, mas garantir histórico
+                    divs_salvar = divs_raw[divs_raw.index >= dois_anos_atras]
+                    
+                    # Converte para dicionário amigável para o MongoDB (Data em string)
+                    divs_dict = {d.strftime('%Y-%m-%d'): float(v) for d, v in divs_salvar.items()}
+                    
+                    # Atualiza o banco (ou cria se não existir)
+                    db.dividendos_cache.update_one(
+                        {"_id": ticker_yf},
+                        {"$set": {"dividendos": divs_dict, "ultima_atualizacao": agora}},
+                        upsert=True
+                    )
+                    divs = divs_salvar
+                else:
+                    # Se não distribui dividendos, salva vazio para não tentar de novo hoje
+                    db.dividendos_cache.update_one(
+                        {"_id": ticker_yf},
+                        {"$set": {"dividendos": {}, "ultima_atualizacao": agora}},
+                        upsert=True
+                    )
+
+            # 3. CRUZA O HISTÓRICO GLOBAL COM A CARTEIRA DO USUÁRIO
+            if not divs.empty:
+                # Filtra apenas os últimos 12 meses para exibir
+                divs = divs[divs.index >= um_ano_atras]
+                
+                for data_div, valor_por_cota in divs.items():
+                    # MÁGICA HISTÓRICA: Soma as cotas compradas ANTES ou NO DIA da Data Com
+                    qtd_na_data = df_ativo_tx[df_ativo_tx['Data_Calc'] <= data_div]['Quantidade'].sum()
+                    
+                    if qtd_na_data > 0:
+                        dados_dividendos.append({
+                            'Data': data_div,
+                            'Mês_Sort': data_div.strftime('%Y-%m'),
+                            'Ativo': ativo,
+                            'Valor por Cota': valor_por_cota,
+                            'Total Recebido': valor_por_cota * qtd_na_data
+                        })
+                        
+        except Exception as e:
+            # 4. FALLBACK BLINDADO: Se o Yahoo Finance bloquear o IP (Rate Limit) ou cair a internet,
+            # nós resgatamos o histórico do MongoDB ignorando a data de atualização.
+            print(f"Falha na API para {ativo}, tentando usar cache velho: {e}")
+            try:
+                doc_velho = db.dividendos_cache.find_one({"_id": ticker_yf})
+                if doc_velho and doc_velho.get("dividendos"):
+                    divs_dict = doc_velho.get("dividendos", {})
+                    divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
+                    divs = divs[divs.index >= um_ano_atras]
+                    
+                    for data_div, valor_por_cota in divs.items():
+                        qtd_na_data = df_ativo_tx[df_ativo_tx['Data_Calc'] <= data_div]['Quantidade'].sum()
+                        if qtd_na_data > 0:
+                            dados_dividendos.append({
+                                'Data': data_div,
+                                'Mês_Sort': data_div.strftime('%Y-%m'),
+                                'Ativo': ativo,
+                                'Valor por Cota': valor_por_cota,
+                                'Total Recebido': valor_por_cota * qtd_na_data
+                            })
+                else:
+                    ativos_com_erro.append(ativo)
+            except:
+                ativos_com_erro.append(ativo)
+                
+    return pd.DataFrame(dados_dividendos), ativos_com_erro
     
 # ==========================================
 # 8. ADMIN / IMPERSONAÇÃO
