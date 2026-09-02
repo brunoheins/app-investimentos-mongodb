@@ -99,7 +99,7 @@ def render():
                     "Total Recebido": lambda x: formata_br(x)
                 })
                 .bar(subset=['Total Recebido'], color='#00C851', vmin=0),
-                use_container_width=True, 
+                width='stretch', 
                 hide_index=True
             )
         
