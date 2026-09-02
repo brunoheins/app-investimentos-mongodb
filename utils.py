@@ -594,6 +594,110 @@ def obter_ativos_por_categoria(email_usuario):
     except: return {categoria: ativos for categoria, ativos in cat_dict.items() if len(ativos) > 0}
 
 # ==========================================
+# CÉREBRO DE BENCHMARKS (API BCB + YFINANCE + MONGODB)
+# ==========================================
+@st.cache_data(ttl=86400, show_spinner=False)
+def obter_historico_benchmarks(mes_inicial, mes_final):
+    """Busca o histórico e usa o MongoDB como Cache Diário (D-0) para evitar Rate Limit"""
+    
+    doc_id = f"benchmarks_{mes_inicial}_{mes_final}"
+    agora = datetime.now()
+    hoje_zero_hora = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    doc_banco = None
+    try:
+        doc_banco = db.benchmarks_cache.find_one({"_id": doc_id})
+        if doc_banco and doc_banco.get("ultima_atualizacao", datetime.min) >= hoje_zero_hora:
+            return doc_banco.get("dados", {})
+    except Exception as e:
+        print(f"Erro ao ler cache de benchmarks no Mongo: {e}")
+
+    dados_velhos = doc_banco.get("dados", {}) if doc_banco else {}
+    
+    dt_ini_bcb = f"01/{mes_inicial[-2:]}/{mes_inicial[:4]}"
+    periodo_fim = pd.to_datetime(mes_final + '-01') + pd.offsets.MonthEnd(1)
+    dt_fim_bcb = periodo_fim.strftime('%d/%m/%Y')
+    
+    df_bench = pd.DataFrame({'MesAno': pd.date_range(start=f"{mes_inicial}-01", end=periodo_fim, freq='MS').strftime('%Y-%m')})
+    df_bench['CDI'] = 0.0
+    df_bench['IPCA'] = 0.0
+    df_bench['IBOV'] = 0.0
+    df_bench['SP500_BRL'] = 0.0
+    
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    try:
+        url_cdi = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados?formato=json&dataInicial={dt_ini_bcb}&dataFinal={dt_fim_bcb}"
+        res_cdi = requests.get(url_cdi, headers=headers, timeout=5)
+        if res_cdi.status_code == 200:
+            df_cdi_raw = pd.DataFrame(res_cdi.json())
+            df_cdi_raw['MesAno'] = pd.to_datetime(df_cdi_raw['data'], format='%d/%m/%Y').dt.strftime('%Y-%m')
+            df_cdi_raw['valor'] = df_cdi_raw['valor'].astype(float) / 100.0
+            for _, row in df_cdi_raw.iterrows():
+                df_bench.loc[df_bench['MesAno'] == row['MesAno'], 'CDI'] = row['valor']
+    except Exception:
+        for mes_str, valores in dados_velhos.items():
+            df_bench.loc[df_bench['MesAno'] == mes_str, 'CDI'] = valores.get('CDI', 0.0)
+
+    try:
+        url_ipca = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados?formato=json&dataInicial={dt_ini_bcb}&dataFinal={dt_fim_bcb}"
+        res_ipca = requests.get(url_ipca, headers=headers, timeout=5)
+        if res_ipca.status_code == 200:
+            df_ipca_raw = pd.DataFrame(res_ipca.json())
+            df_ipca_raw['MesAno'] = pd.to_datetime(df_ipca_raw['data'], format='%d/%m/%Y').dt.strftime('%Y-%m')
+            df_ipca_raw['valor'] = df_ipca_raw['valor'].astype(float) / 100.0
+            for _, row in df_ipca_raw.iterrows():
+                df_bench.loc[df_bench['MesAno'] == row['MesAno'], 'IPCA'] = row['valor']
+    except Exception:
+        for mes_str, valores in dados_velhos.items():
+            df_bench.loc[df_bench['MesAno'] == mes_str, 'IPCA'] = valores.get('IPCA', 0.0)
+
+    try:
+        dt_ini_yf = (pd.to_datetime(f"{mes_inicial}-01") - pd.DateOffset(months=1)).strftime('%Y-%m-%d')
+        dt_fim_yf = (periodo_fim + pd.DateOffset(days=5)).strftime('%Y-%m-%d')
+        
+        tickers = ['^BVSP', '^GSPC', 'BRL=X']
+        df_yf = yf.download(tickers, start=dt_ini_yf, end=dt_fim_yf, interval='1mo', progress=False)
+        
+        if df_yf.empty or 'Close' not in df_yf.columns:
+            raise Exception("YF bloqueou.")
+            
+        df_close = df_yf['Close']
+        if df_close.index.tz is not None:
+            df_close.index = df_close.index.tz_localize(None)
+            
+        if '^BVSP' in df_close.columns:
+            ret_ibov = df_close['^BVSP'].pct_change()
+            for idx_date, val in ret_ibov.items():
+                if pd.notna(val):
+                    df_bench.loc[df_bench['MesAno'] == str(idx_date)[:7], 'IBOV'] = float(val)
+
+        if '^GSPC' in df_close.columns and 'BRL=X' in df_close.columns:
+            preco_sp500_brl = df_close['^GSPC'] * df_close['BRL=X']
+            ret_sp500_brl = preco_sp500_brl.pct_change()
+            for idx_date, val in ret_sp500_brl.items():
+                if pd.notna(val):
+                    df_bench.loc[df_bench['MesAno'] == str(idx_date)[:7], 'SP500_BRL'] = float(val)
+
+    except Exception:
+        for mes_str, valores in dados_velhos.items():
+            df_bench.loc[df_bench['MesAno'] == mes_str, 'IBOV'] = valores.get('IBOV', 0.0)
+            df_bench.loc[df_bench['MesAno'] == mes_str, 'SP500_BRL'] = valores.get('SP500_BRL', 0.0)
+
+    resultado_dict = df_bench.set_index('MesAno').to_dict(orient='index')
+    
+    try:
+        db.benchmarks_cache.update_one(
+            {"_id": doc_id},
+            {"$set": {"dados": resultado_dict, "ultima_atualizacao": agora}},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"Erro ao salvar benchmarks no Mongo: {e}")
+
+    return resultado_dict
+    
+# ==========================================
 # 8. ADMIN / IMPERSONAÇÃO
 # ==========================================
 def listar_todos_usuarios():
