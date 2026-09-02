@@ -87,7 +87,7 @@ def tela_acesso():
             with st.form("form_login"):
                 email_input = st.text_input("E-mail")
                 senha_input = st.text_input("Senha", type="password")
-                submit_login = st.form_submit_button("Entrar", use_container_width=True)
+                submit_login = st.form_submit_button("Entrar", width='stretch')
                 
                 if submit_login:
                     agora = time.time()
@@ -127,7 +127,7 @@ def tela_acesso():
                 cad_email = st.text_input("Seu melhor E-mail")
                 cad_senha = st.text_input("Crie uma Senha", type="password")
                 
-                if st.form_submit_button("Enviar Solicitação de Acesso", use_container_width=True):
+                if st.form_submit_button("Enviar Solicitação de Acesso", width='stretch'):
                     if not cad_nome or not cad_email or not cad_senha:
                         st.warning("Preencha todos os campos.")
                     else:
@@ -142,7 +142,7 @@ def tela_acesso():
                     st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
                     esq_email = st.text_input("E-mail Cadastrado")
                     
-                    if st.form_submit_button("Enviar Código", use_container_width=True):
+                    if st.form_submit_button("Enviar Código", width='stretch'):
                         agora = time.time()
                         tempo_restante = 60 - (agora - st.session_state.last_email_time)
                         
@@ -173,8 +173,8 @@ def tela_acesso():
                     esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
                     
                     c_btn1, c_btn2 = st.columns(2)
-                    submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", use_container_width=True)
-                    if c_btn2.form_submit_button("Cancelar", use_container_width=True):
+                    submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", width='stretch')
+                    if c_btn2.form_submit_button("Cancelar", width='stretch'):
                         st.session_state.codigo_recuperacao = None
                         st.session_state.email_recuperacao = None
                         st.rerun()
@@ -342,6 +342,6 @@ else:
             unsafe_allow_html=True
         )
 
-    if st.sidebar.button("🚪 Sair do App", use_container_width=True):
+    if st.sidebar.button("🚪 Sair do App", width='stretch'):
         st.session_state.clear()
         st.rerun()
