@@ -414,67 +414,59 @@ def obter_cotacoes(email_usuario):
     #df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
     # --- 3A. ATUALIZAR TESOURO DIRETO ---
     if titulos_td_pedidos:
-        mapa_td = {}
+        mapa_td_limpo = {}
+        
+        def normalizar_nome_td(nome):
+            # Converte tudo para maiúsculo e remove qualquer coisa que não seja letra ou número.
+            # Banco: "TESOURO IPCA + 2045" -> "TESOUROIPCA2045"
+            # API: "Tesouro IPCA+ 2045" -> "TESOUROIPCA2045"
+            return re.sub(r'[^A-Z0-9]', '', str(nome).upper())
+
         try:
-            # 1ª Tentativa: API JSON Oficial do Tesouro Direto (Mais estável e rápida que o CSV)
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            url_td = "https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/treasurybondsinfo.json"
-            res = requests.get(url_td, headers=headers, timeout=10)
+            # 1. Requisição para a API (Idêntico ao seu Google Apps Script)
+            url_gabriso = "https://tesouro.gabriso.com/bonds"
+            res_alt = requests.get(url_gabriso, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             
-            if res.status_code == 200:
-                dados = res.json()
-                lista_titulos = dados.get('response', {}).get('TrsrBdTradgList', [])
-                for item in lista_titulos:
-                    bd = item.get('TrsrBd', {})
-                    nome = str(bd.get('nm', '')).strip().upper()
-                    nome_limpo = " ".join(nome.split())
+            if res_alt.status_code == 200:
+                for bond in res_alt.json().get("bonds", []):
+                    nome_original = str(bond.get("name", ""))
+                    chave_limpa = normalizar_nome_td(nome_original)
                     
-                    # Tenta pegar o preço de resgate primeiro, se não tiver, pega o de compra
-                    preco = bd.get('untrRedVal', 0.0) 
-                    if not preco or preco == 0:
-                        preco = bd.get('untrInvstmtVal', 0.0) 
+                    # Puxa o campo exato revelado pelo seu script
+                    preco_resgate = bond.get("unitary_redemption_value", 0.0)
+                    
+                    # Converte para float caso venha como string
+                    try:
+                        preco = float(str(preco_resgate).replace('R$', '').replace('.', '').replace(',', '.')) if isinstance(preco_resgate, str) else float(preco_resgate)
+                    except:
+                        preco = 0.0
                         
-                    if nome_limpo and preco > 0:
-                        mapa_td[nome_limpo] = float(preco)
+                    if chave_limpa and preco > 0:
+                        mapa_td_limpo[chave_limpa] = preco
                         
         except Exception as e:
-            print(f"Erro no JSON Oficial TD: {e}")
-            
-        # 2ª Tentativa (Fallback): API Alternativa caso o site do governo caia
-        if not mapa_td:
-            try:
-                res_alt = requests.get("https://tesouro.gabriso.com/bonds", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                if res_alt.status_code == 200:
-                    for bond in res_alt.json().get("bonds", []):
-                        nome = str(bond.get("name", "")).strip().upper()
-                        nome_limpo = " ".join(nome.split())
-                        # Limpa a formatação monetária (Ex: R$ 1.234,56 -> 1234.56)
-                        preco_str = str(bond.get("price", "0")).replace('R$', '').replace('.', '').replace(',', '.')
-                        preco = float(preco_str) if preco_str.strip() else 0.0
-                        if nome_limpo and preco > 0:
-                            mapa_td[nome_limpo] = preco
-            except Exception as e:
-                print(f"Erro no Gabriso TD: {e}")
+            print(f"Erro na API Gabriso TD: {e}")
 
-        # Agora aplica os preços e salva no MongoDB
+        # 2. Cruza com os títulos pedidos pelo usuário
         for titulo in titulos_td_pedidos:
-            titulo_norm = " ".join(titulo.split())
+            # Normaliza o nome salvo no MongoDB para cruzar com a API
+            chave_busca = normalizar_nome_td(titulo) 
             
-            if titulo_norm in mapa_td:
-                preco_td = mapa_td[titulo_norm]
+            if chave_busca in mapa_td_limpo:
+                preco_td = mapa_td_limpo[chave_busca]
                 cotacoes[titulo] = preco_td
                 
-                # Salva no Banco para fazer cache e não precisar bater na rede toda hora
+                # Salva o preço no MongoDB (Isso cria a tabela se não existir)
                 try:
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
                         upsert=True
                     )
-                except:
-                    pass
+                except Exception as db_err:
+                    print(f"Erro ao salvar TD no Mongo: {db_err}")
             else:
-                # Se não achou na rede de jeito nenhum, tenta o banco como última salvação
+                # Se a API cair ou não achar, puxa do banco como última salvação
                 doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
                 if doc_velho: 
                     cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
