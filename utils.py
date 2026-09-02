@@ -356,7 +356,7 @@ def buscar_setor_yahoo(ativo, categoria):
 # ==============================================================
 # MOTOR DE COTAÇÕES 100% SOB DEMANDA COM CACHE DE RAM ISOLADO
 # ==============================================================
-@st.cache_data(ttl=3600, show_spinner=False) # DEVOLVENDO A MEMÓRIA RAM SUPER RÁPIDA (1 HORA)
+#@st.cache_data(ttl=3600, show_spinner=False) # DEVOLVENDO A MEMÓRIA RAM SUPER RÁPIDA (1 HORA)
 def obter_cotacoes(email_usuario):
     cotacoes = {}
     ativos_buscados = set()
