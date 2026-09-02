@@ -12,10 +12,15 @@ def render():
     st.title("📈 Evolução Real do Patrimônio")
     st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
 
-    with st.spinner("Construindo linha do tempo da sua carteira e processando indicadores..."):
+    sucesso_carregamento = False
+
+    # ==========================================
+    # 1. FASE DE EXTRAÇÃO E PROCESSAMENTO
+    # ==========================================
+    with st.status("Construindo linha do tempo da sua carteira...", expanded=True) as status:
         hoje = pd.Timestamp.today()
         
-        # --- 1. LER E TRATAR CAIXA (APORTES/SAQUES) ---
+        st.write("Lendo movimentações de caixa...")
         df_dep = ler_planilha("Depositos")
         if not df_dep.empty and 'Email' in df_dep.columns:
             df_dep['Email'] = df_dep['Email'].astype(str).str.strip().str.lower()
@@ -33,7 +38,7 @@ def render():
         else:
             df_dep_agrupado = pd.DataFrame(columns=['MesAno', 'Valor'])
 
-        # --- 2. LER E TRATAR COMPRAS (ESTOQUE DE ATIVOS) ---
+        st.write("Lendo histórico de compras e vendas...")
         df_invest = ler_planilha("Investimentos")
         if not df_invest.empty and 'Email' in df_invest.columns:
             df_invest['Email'] = df_invest['Email'].astype(str).str.strip().str.lower()
@@ -57,6 +62,7 @@ def render():
                 else:
                     df_user_inv['PrecoCusto'] = 0.0
                 
+                st.write("Buscando cotações atualizadas...")
                 cotacoes_dict = obter_cotacoes(st.session_state.email)
                 df_user_inv['PrecoLive'] = df_user_inv['Ativo'].map(cotacoes_dict).fillna(0.0)
                 
@@ -76,10 +82,11 @@ def render():
             df_inv_agrupado = pd.DataFrame(columns=['MesAno', 'Ativo', 'Quantidade', 'TotalCusto', 'PrecoLive', 'TemCotacao'])
 
         if df_dep_agrupado.empty and df_inv_agrupado.empty:
+            status.update(label="Nenhum dado encontrado.", state="complete", expanded=False)
             st.info("Registre aportes e movimentações na aba '📝 Lançamentos' para ver a evolução do seu patrimônio.")
             return
 
-        # --- 3. CRIAR A LINHA DO TEMPO CONTÍNUA ---
+        st.write("Calculando histórico de Benchmarks (CDI, IBOV, etc.)...")
         meses_dep = df_dep_agrupado['MesAno'].unique().tolist() if not df_dep_agrupado.empty else []
         meses_inv = df_inv_agrupado['MesAno'].unique().tolist() if not df_inv_agrupado.empty else []
         
@@ -96,7 +103,6 @@ def render():
         range_meses = pd.date_range(start=f"{mes_inicial}-01", end=f"{mes_final}-01", freq='MS').strftime('%Y-%m').tolist()
         df_timeline = pd.DataFrame({'MesAno': range_meses})
         
-        # --- 4. CALCULAR CAIXA LÍQUIDO E SALDO TEÓRICO DOS BENCHMARKS ---
         dict_benchmarks = obter_historico_benchmarks(mes_inicial, mes_final)
         
         saldo_cdi = 0.0
@@ -140,7 +146,6 @@ def render():
         df_timeline['Valor_SP500'] = linha_sp500
         df_timeline['Valor_IPCA'] = linha_ipca
 
-        # --- 5. CALCULAR PATRIMÔNIO REAL (CAIXA PENDENTE + ATIVOS) ---
         linha_patrimonio = []
         estoque_ativos = {} 
         
@@ -180,7 +185,14 @@ def render():
         df_timeline['MesExibicao'] = pd.to_datetime(df_timeline['MesAno'], format='%Y-%m').dt.strftime('%m/%Y')
         df_timeline.loc[df_timeline.index[-1], 'MesExibicao'] = "Hoje"
 
-        # --- 6. PAINEL DE RESUMO E BENCHMARKS (CHECKBOXES) ---
+        sucesso_carregamento = True
+        status.update(label="Linha do tempo processada com sucesso!", state="complete", expanded=False)
+
+
+    # ==========================================
+    # 2. RENDERIZAÇÃO DA INTERFACE (MÉTRICAS E GRÁFICOS)
+    # ==========================================
+    if sucesso_carregamento:
         live_aportado = df_timeline.iloc[-1]['TotalAportado']
         live_atual = df_timeline.iloc[-1]['PatrimonioReal']
         
@@ -232,7 +244,7 @@ def render():
             
         st.markdown("---")
 
-        # --- 7. GRÁFICO PLOTLY SUPER CARREGADO ---
+        # --- GRÁFICO PLOTLY SUPER CARREGADO ---
         fig = go.Figure()
 
         # Linha Base: Dinheiro que saiu do bolso
@@ -300,21 +312,21 @@ def render():
         
         st.plotly_chart(fig, width='stretch')
 
-    # --- 8. AUDITORIA VISUAL ---
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.expander("🔍 Inspecionar Dados Lidos (Auditoria)"):
-        st.markdown("Confira nas tabelas abaixo em quais meses o sistema agrupou os seus lançamentos de caixa:")
-        c_dbg1, c_dbg2 = st.columns(2)
-        with c_dbg1:
-            st.markdown("**1. Movimentação de Caixa por Mês**")
-            if not df_dep_agrupado.empty:
-                df_dep_exibicao = df_dep_agrupado.copy()
-                df_dep_exibicao['Valor'] = df_dep_exibicao['Valor'].apply(formata_br)
-                st.dataframe(df_dep_exibicao, hide_index=True, width='stretch')
-            else:
-                st.info("Nenhuma movimentação agrupada.")
-        with c_dbg2:
-            st.markdown("**2. Acúmulo no Gráfico**")
-            df_dbg = df_timeline[['MesExibicao', 'TotalAportado', 'PatrimonioReal']].copy()
-            df_dbg.rename(columns={'TotalAportado': 'Linha Cinza', 'PatrimonioReal': 'Linha Colorida'}, inplace=True)
-            st.dataframe(df_dbg, hide_index=True, width='stretch')
+        # --- AUDITORIA VISUAL ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("🔍 Inspecionar Dados Lidos (Auditoria)"):
+            st.markdown("Confira nas tabelas abaixo em quais meses o sistema agrupou os seus lançamentos de caixa:")
+            c_dbg1, c_dbg2 = st.columns(2)
+            with c_dbg1:
+                st.markdown("**1. Movimentação de Caixa por Mês**")
+                if not df_dep_agrupado.empty:
+                    df_dep_exibicao = df_dep_agrupado.copy()
+                    df_dep_exibicao['Valor'] = df_dep_exibicao['Valor'].apply(formata_br)
+                    st.dataframe(df_dep_exibicao, hide_index=True, width='stretch')
+                else:
+                    st.info("Nenhuma movimentação agrupada.")
+            with c_dbg2:
+                st.markdown("**2. Acúmulo no Gráfico**")
+                df_dbg = df_timeline[['MesExibicao', 'TotalAportado', 'PatrimonioReal']].copy()
+                df_dbg.rename(columns={'TotalAportado': 'Linha Cinza', 'PatrimonioReal': 'Linha Colorida'}, inplace=True)
+                st.dataframe(df_dbg, hide_index=True, width='stretch')
