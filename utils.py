@@ -411,34 +411,73 @@ def obter_cotacoes(email_usuario):
     ativos_bolsa_pedidos = [a for a in ativos_para_atualizar if a not in titulos_td_pedidos]
     
     # --- 3A. ATUALIZAR TESOURO DIRETO ---
+    #df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
+    # --- 3A. ATUALIZAR TESOURO DIRETO ---
     if titulos_td_pedidos:
+        mapa_td = {}
         try:
-            df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
-            df_td.columns = [str(c).strip().upper() for c in df_td.columns]
-            col_titulo = next((col for col in df_td.columns if 'TÍTULO' in col), df_td.columns[0])
-            col_preco = next((col for col in df_td.columns if 'RESGATE' in col or 'PREÇO' in col), df_td.columns[2])
+            # 1ª Tentativa: API JSON Oficial do Tesouro Direto (Mais estável e rápida que o CSV)
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            url_td = "https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/treasurybondsinfo.json"
+            res = requests.get(url_td, headers=headers, timeout=10)
             
-            mapa_td = {}
-            for _, row in df_td.iterrows():
-                nome_limpo = " ".join(str(row[col_titulo]).upper().split())
-                if nome_limpo and nome_limpo != "NAN": 
-                    mapa_td[nome_limpo] = extrair_numero_br(row[col_preco])
+            if res.status_code == 200:
+                dados = res.json()
+                lista_titulos = dados.get('response', {}).get('TrsrBdTradgList', [])
+                for item in lista_titulos:
+                    bd = item.get('TrsrBd', {})
+                    nome = str(bd.get('nm', '')).strip().upper()
+                    nome_limpo = " ".join(nome.split())
                     
-            for titulo in titulos_td_pedidos:
-                titulo_norm = " ".join(titulo.split())
-                if titulo_norm in mapa_td:
-                    preco_td = mapa_td[titulo_norm]
-                    cotacoes[titulo] = preco_td
-                    
+                    # Tenta pegar o preço de resgate primeiro, se não tiver, pega o de compra
+                    preco = bd.get('untrRedVal', 0.0) 
+                    if not preco or preco == 0:
+                        preco = bd.get('untrInvstmtVal', 0.0) 
+                        
+                    if nome_limpo and preco > 0:
+                        mapa_td[nome_limpo] = float(preco)
+                        
+        except Exception as e:
+            print(f"Erro no JSON Oficial TD: {e}")
+            
+        # 2ª Tentativa (Fallback): API Alternativa caso o site do governo caia
+        if not mapa_td:
+            try:
+                res_alt = requests.get("https://tesouro.gabriso.com/bonds", headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                if res_alt.status_code == 200:
+                    for bond in res_alt.json().get("bonds", []):
+                        nome = str(bond.get("name", "")).strip().upper()
+                        nome_limpo = " ".join(nome.split())
+                        # Limpa a formatação monetária (Ex: R$ 1.234,56 -> 1234.56)
+                        preco_str = str(bond.get("price", "0")).replace('R$', '').replace('.', '').replace(',', '.')
+                        preco = float(preco_str) if preco_str.strip() else 0.0
+                        if nome_limpo and preco > 0:
+                            mapa_td[nome_limpo] = preco
+            except Exception as e:
+                print(f"Erro no Gabriso TD: {e}")
+
+        # Agora aplica os preços e salva no MongoDB
+        for titulo in titulos_td_pedidos:
+            titulo_norm = " ".join(titulo.split())
+            
+            if titulo_norm in mapa_td:
+                preco_td = mapa_td[titulo_norm]
+                cotacoes[titulo] = preco_td
+                
+                # Salva no Banco para fazer cache e não precisar bater na rede toda hora
+                try:
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
                         {"$set": {"preco": preco_td, "ultima_atualizacao": agora}},
                         upsert=True
                     )
-        except Exception as e:
-            for titulo in titulos_td_pedidos:
+                except:
+                    pass
+            else:
+                # Se não achou na rede de jeito nenhum, tenta o banco como última salvação
                 doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
-                if doc_velho: cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
+                if doc_velho: 
+                    cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
     
     # --- 3B. ATUALIZAR BOLSA YAHOO FINANCE ---
     if ativos_bolsa_pedidos:
