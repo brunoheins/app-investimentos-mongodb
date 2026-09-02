@@ -318,7 +318,7 @@ else:
         "Visão Geral": [
             st.Page(resumo.render, title="Resumo da Aplicação", icon="💼", default=True, url_path="resumo"),
             st.Page(saldo.render, title="Evolução do Saldo", icon="📈", url_path="saldo"),
-            st.Page(dividendos.render, title="Dashboard de Dividendos", icon="💸")
+            st.Page(dividendos.render, title="Dashboard de Dividendos", icon="💸", url_path="dividendos")
         ],
         "Operacional": [
             st.Page(aportes.render, title="Guia de Aportes", icon="🎯", url_path="aportes"),
