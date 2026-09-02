@@ -3,64 +3,7 @@ import pandas as pd
 import yfinance as yf
 from dateutil.relativedelta import relativedelta
 import re
-from utils import ler_planilha, extrair_numero_br, formata_br
-
-# Mágica do Cache: Guarda os dados por 1 hora para a tela abrir instantaneamente!
-@st.cache_data(ttl=3600, show_spinner=False)
-def buscar_historico_dividendos(df_transacoes):
-    hoje = pd.Timestamp.today().tz_localize(None)
-    um_ano_atras = hoje - relativedelta(months=12)
-    
-    dados_dividendos = []
-    ativos_com_erro = []
-
-    # Localiza a coluna de Data dinamicamente (evita o KeyError de espaços invisíveis no Sheets)
-    col_data = next((c for c in df_transacoes.columns if 'dat' in str(c).lower()), None)
-    
-    if col_data:
-        df_transacoes['Data_Calc'] = pd.to_datetime(df_transacoes[col_data], format='%d/%m/%Y', errors='coerce')
-    else:
-        df_transacoes['Data_Calc'] = pd.to_datetime('2000-01-01') # Fallback de segurança
-
-    # Remove linhas onde a data não pôde ser lida
-    df_transacoes = df_transacoes.dropna(subset=['Data_Calc'])
-    ativos = df_transacoes['Ativo'].unique()
-
-    for ativo in ativos:
-        df_ativo_tx = df_transacoes[df_transacoes['Ativo'] == ativo]
-
-        # Normaliza o ticker para a B3
-        ticker_yf = ativo
-        if "." not in ticker_yf and re.search(r'\d+$', ticker_yf):
-            ticker_yf = f"{ticker_yf}.SA"
-
-        try:
-            ticker = yf.Ticker(ticker_yf)
-            divs = ticker.dividends 
-            
-            if not divs.empty:
-                # Remove o fuso horário para não dar erro na comparação de datas
-                divs.index = divs.index.tz_localize(None)
-                # Filtra apenas os últimos 12 meses
-                divs = divs[divs.index >= um_ano_atras]
-                
-                for data_div, valor_por_cota in divs.items():
-                    # MÁGICA HISTÓRICA: Soma as cotas compradas ANTES ou NO DIA da Data Com
-                    qtd_na_data = df_ativo_tx[df_ativo_tx['Data_Calc'] <= data_div]['Quantidade'].sum()
-                    
-                    if qtd_na_data > 0:
-                        dados_dividendos.append({
-                            'Data': data_div,
-                            'Mês_Sort': data_div.strftime('%Y-%m'),
-                            'Ativo': ativo,
-                            'Valor por Cota': valor_por_cota,
-                            'Total Recebido': valor_por_cota * qtd_na_data
-                        })
-        except Exception:
-            ativos_com_erro.append(ativo)
-            
-    return pd.DataFrame(dados_dividendos), ativos_com_erro
-
+from utils import ler_planilha, extrair_numero_br, formata_br, buscar_historico_dividendos
 
 def render():
     st.title("💸 Dashboard de Dividendos")
