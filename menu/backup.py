@@ -19,12 +19,12 @@ def render():
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📤 Exportar para Excel", use_container_width=True, type="primary" if st.session_state.tela_backup == "exportar" else "secondary"):
+        if st.button("📤 Exportar para Excel", width='stretch', type="primary" if st.session_state.tela_backup == "exportar" else "secondary"):
             st.session_state.tela_backup = "exportar"
             st.rerun()
             
     with col2:
-        if st.button("📥 Importar do Excel", use_container_width=True, type="primary" if st.session_state.tela_backup == "importar" else "secondary"):
+        if st.button("📥 Importar do Excel", width='stretch', type="primary" if st.session_state.tela_backup == "importar" else "secondary"):
             st.session_state.tela_backup = "importar"
             st.rerun()
 
@@ -37,7 +37,7 @@ def render():
         st.subheader("Gerar Planilha de Backup")
         st.write("Baixe todas as suas informações em um arquivo Excel consolidado. O arquivo conterá abas separadas para cada seção, preservando sua privacidade (sem a coluna de e-mail).")
         
-        if st.button("Gerar Arquivo Excel", type="primary", use_container_width=True):
+        if st.button("Gerar Arquivo Excel", type="primary", width='stretch'):
             with st.spinner("Compilando seus dados em Excel..."):
                 abas_alvo = ["Configuracao", "Ativos_Config", "Depositos", "Investimentos"]
                 
@@ -73,7 +73,7 @@ def render():
                     data=processed_data,
                     file_name="meu_backup_investimentos.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+                    width='stretch',
                     type="primary"
                 )
 
@@ -102,7 +102,7 @@ def render():
                 
                 st.warning("⚠️ Atenção: Esta ação irá modificar seu banco de dados na nuvem e não poderá ser desfeita.")
                 
-                if st.button("🚀 Iniciar Restauração via Excel", type="primary", use_container_width=True):
+                if st.button("🚀 Iniciar Restauração via Excel", type="primary", width='stretch'):
                     with st.spinner("Processando restauração dos dados... Isso pode demorar um pouco."):
                         
                         abas_alvo = ["Configuracao", "Ativos_Config", "Depositos", "Investimentos"]
