@@ -76,122 +76,145 @@ if 'logado' not in st.session_state:
 # FUNÇÃO DA TELA DE ACESSO (LOGIN/CADASTRO)
 # ==========================================
 def tela_acesso():
-    st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+    import time # Garantindo que o módulo time esteja importado
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
+    # 1. Cria o contêiner vazio que vai abraçar toda a tela de login
+    painel_login = st.empty()
+    
+    # 2. Renderiza tudo DENTRO do contêiner
+    with painel_login.container():
+        st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        with tab_login:
-            with st.form("form_login"):
-                email_input = st.text_input("E-mail")
-                senha_input = st.text_input("Senha", type="password")
-                submit_login = st.form_submit_button("Entrar", width='stretch')
-                
-                if submit_login:
-                    agora = time.time()
-                    if agora - st.session_state.last_login_time < 3:
-                        st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
-                    else:
-                        st.session_state.last_login_time = agora
-                        email_formatado = email_input.strip().lower()
-                        senha_formatada = senha_input.strip()
-                        
-                        usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
-                        
-                        if usuario:
-                            status_usuario = str(usuario.get('status', 'Pendente')).strip().capitalize()
-                            if status_usuario == 'Ativo':
-                                st.session_state.logado = True
-                                st.session_state.email = email_formatado
-                                st.session_state.nome = usuario.get('nome', 'Usuário')
-                                
-                                st.session_state.email_autenticado = email_formatado
-                                st.session_state.is_admin = usuario.get('admin', False)
-                                st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
-                                
-                                st.cache_data.clear() 
-                                st.rerun()
-                            elif status_usuario == 'Pendente':
-                                st.warning("⏳ Seu cadastro está em análise pelo administrador.")
-                            else:
-                                st.error("❌ Seu acesso foi revogado.")
-                        else:
-                            st.error("❌ Usuário ou senha incorretos.")
-
-        with tab_cadastro:
-            with st.form("form_cadastro", clear_on_submit=True):
-                st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
-                cad_nome = st.text_input("Seu Nome Completo")
-                cad_email = st.text_input("Seu melhor E-mail")
-                cad_senha = st.text_input("Crie uma Senha", type="password")
-                
-                if st.form_submit_button("Enviar Solicitação de Acesso", width='stretch'):
-                    if not cad_nome or not cad_email or not cad_senha:
-                        st.warning("Preencha todos os campos.")
-                    else:
-                        with st.spinner("Registrando..."):
-                            sucesso, msg = registrar_novo_usuario(cad_nome, cad_email, cad_senha)
-                            if sucesso: st.success(msg)
-                            else: st.error(msg)
-                            
-        with tab_esqueci:
-            if not st.session_state.codigo_recuperacao:
-                with st.form("form_pedir_codigo"):
-                    st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
-                    esq_email = st.text_input("E-mail Cadastrado")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
+            
+            with tab_login:
+                with st.form("form_login"):
+                    email_input = st.text_input("E-mail")
+                    senha_input = st.text_input("Senha", type="password")
+                    submit_login = st.form_submit_button("Entrar", width='stretch')
                     
-                    if st.form_submit_button("Enviar Código", width='stretch'):
+                    if submit_login:
                         agora = time.time()
-                        tempo_restante = 60 - (agora - st.session_state.last_email_time)
-                        
-                        if tempo_restante > 0:
-                            st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
-                        elif not esq_email:
-                            st.warning("Preencha o campo de e-mail.")
+                        if agora - st.session_state.last_login_time < 3:
+                            st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
                         else:
-                            st.session_state.last_email_time = agora
-                            with st.spinner("Enviando e-mail..."):
-                                from utils import verificar_email_cadastrado, enviar_codigo_email
-                                import random, string
-                                if verificar_email_cadastrado(esq_email):
-                                    codigo_gerado = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                                    sucesso, msg = enviar_codigo_email(esq_email, codigo_gerado)
-                                    if sucesso:
-                                        st.session_state.codigo_recuperacao = codigo_gerado
-                                        st.session_state.email_recuperacao = esq_email.strip().lower()
-                                        st.rerun()
-                                    else: st.error(msg)
-                                else: st.error("E-mail não encontrado.")
-            else:
-                with st.form("form_nova_senha"):
-                    st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
-                    codigo_digitado = st.text_input("Código de 6 caracteres")
-                    st.markdown("---")
-                    esq_nova_senha = st.text_input("Nova Senha", type="password")
-                    esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
+                            st.session_state.last_login_time = agora
+                            email_formatado = email_input.strip().lower()
+                            senha_formatada = senha_input.strip()
+                            
+                            usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
+                            
+                            if usuario:
+                                status_usuario = str(usuario.get('status', 'Pendente')).strip().capitalize()
+                                if status_usuario == 'Ativo':
+                                    st.session_state.logado = True
+                                    st.session_state.email = email_formatado
+                                    st.session_state.nome = usuario.get('nome', 'Usuário')
+                                    
+                                    st.session_state.email_autenticado = email_formatado
+                                    st.session_state.is_admin = usuario.get('admin', False)
+                                    st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
+                                    
+                                    st.cache_data.clear() 
+                                    
+                                    # 3. A MÁGICA: Apaga a tela inteira instantaneamente
+                                    painel_login.empty()
+                                    time.sleep(0.1) # Pausa microscópica para o navegador limpar o visual
+                                    
+                                    st.rerun()
+                                elif status_usuario == 'Pendente':
+                                    st.warning("⏳ Seu cadastro está em análise pelo administrador.")
+                                else:
+                                    st.error("❌ Seu acesso foi revogado.")
+                            else:
+                                st.error("❌ Usuário ou senha incorretos.")
+
+            with tab_cadastro:
+                with st.form("form_cadastro", clear_on_submit=True):
+                    st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
+                    cad_nome = st.text_input("Seu Nome Completo")
+                    cad_email = st.text_input("Seu melhor E-mail")
+                    cad_senha = st.text_input("Crie uma Senha", type="password")
                     
-                    c_btn1, c_btn2 = st.columns(2)
-                    submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", width='stretch')
-                    if c_btn2.form_submit_button("Cancelar", width='stretch'):
-                        st.session_state.codigo_recuperacao = None
-                        st.session_state.email_recuperacao = None
-                        st.rerun()
-                        
-                    if submit_validar:
-                        if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
-                            st.error("❌ Código incorreto.")
-                        elif esq_nova_senha != esq_confirma_senha:
-                            st.error("❌ As senhas não conferem.")
+                    if st.form_submit_button("Enviar Solicitação de Acesso", width='stretch'):
+                        if not cad_nome or not cad_email or not cad_senha:
+                            st.warning("Preencha todos os campos.")
                         else:
-                            from utils import redefinir_senha_aprovada
-                            sucesso, msg = redefinir_senha_aprovada(st.session_state.email_recuperacao, esq_nova_senha)
-                            if sucesso:
-                                st.success(msg)
-                                st.session_state.codigo_recuperacao = None
-                                st.session_state.email_recuperacao = None
-                            else: st.error(msg)
+                            with st.spinner("Registrando..."):
+                                sucesso, msg = registrar_novo_usuario(cad_nome, cad_email, cad_senha)
+                                if sucesso: st.success(msg)
+                                else: st.error(msg)
+                                
+            with tab_esqueci:
+                if not st.session_state.codigo_recuperacao:
+                    with st.form("form_pedir_codigo"):
+                        st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
+                        esq_email = st.text_input("E-mail Cadastrado")
+                        
+                        if st.form_submit_button("Enviar Código", width='stretch'):
+                            agora = time.time()
+                            tempo_restante = 60 - (agora - st.session_state.last_email_time)
+                            
+                            if tempo_restante > 0:
+                                st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
+                            elif not esq_email:
+                                st.warning("Preencha o campo de e-mail.")
+                            else:
+                                st.session_state.last_email_time = agora
+                                with st.spinner("Enviando e-mail..."):
+                                    from utils import verificar_email_cadastrado, enviar_codigo_email
+                                    import random, string
+                                    if verificar_email_cadastrado(esq_email):
+                                        codigo_gerado = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                                        sucesso, msg = enviar_codigo_email(esq_email, codigo_gerado)
+                                        if sucesso:
+                                            st.session_state.codigo_recuperacao = codigo_gerado
+                                            st.session_state.email_recuperacao = esq_email.strip().lower()
+                                            
+                                            painel_login.empty()
+                                            time.sleep(0.1)
+                                            st.rerun()
+                                        else: st.error(msg)
+                                    else: st.error("E-mail não encontrado.")
+                else:
+                    with st.form("form_nova_senha"):
+                        st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
+                        codigo_digitado = st.text_input("Código de 6 caracteres")
+                        st.markdown("---")
+                        esq_nova_senha = st.text_input("Nova Senha", type="password")
+                        esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
+                        
+                        c_btn1, c_btn2 = st.columns(2)
+                        submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", width='stretch')
+                        if c_btn2.form_submit_button("Cancelar", width='stretch'):
+                            st.session_state.codigo_recuperacao = None
+                            st.session_state.email_recuperacao = None
+                            
+                            painel_login.empty()
+                            time.sleep(0.1)
+                            st.rerun()
+                            
+                        if submit_validar:
+                            if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
+                                st.error("❌ Código incorreto.")
+                            elif esq_nova_senha != esq_confirma_senha:
+                                st.error("❌ As senhas não conferem.")
+                            else:
+                                from utils import redefinir_senha_aprovada
+                                sucesso, msg = redefinir_senha_aprovada(st.session_state.email_recuperacao, esq_nova_senha)
+                                if sucesso:
+                                    st.success(msg)
+                                    st.session_state.codigo_recuperacao = None
+                                    st.session_state.email_recuperacao = None
+                                    
+                                    painel_login.empty()
+                                    time.sleep(0.1)
+                                    st.rerun()
+                                else: st.error(msg)
+
 
 # ==========================================
 # FUNÇÃO DA TELA DE PAINEL ADMIN
