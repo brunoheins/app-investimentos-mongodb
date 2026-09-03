@@ -1,10 +1,12 @@
 import streamlit as st
+
+# A configuração da página DEVE ser a primeira linha do app
+# 1. A configuração da página DEVE ser a primeira linha absoluta do app (antes de qualquer outro import)
+st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
+
 import pandas as pd
 import time
 from utils import ler_planilha, registrar_novo_usuario, db
-
-# A configuração da página DEVE ser a primeira linha do app
-st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
 
 # --- CSS INJETADO: DESIGN PREMIUM E CORREÇÃO DE RESPONSIVIDADE ---
 st.markdown("""
