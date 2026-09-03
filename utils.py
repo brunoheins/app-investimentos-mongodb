@@ -502,7 +502,7 @@ def obter_cotacoes(email_usuario):
             tickers_yf.append("BRL=X")
             
         try:
-            df_raw = yf.download(list(set(tickers_yf)), period="5d", progress=False)
+            df_raw = yf.download(list(set(tickers_yf)), period="1d", progress=False, threads=True)
             
             if df_raw.empty:
                 st.toast("⚠️ Yahoo Finance não retornou dados. Usando backup.", icon="🚨")
