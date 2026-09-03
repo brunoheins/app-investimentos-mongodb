@@ -21,7 +21,7 @@ def render():
             dados_usuario = df_invest[df_invest['Email'] == st.session_state.email].copy()
             
             if not dados_usuario.empty:
-                st.write("Buscando cotações ao vivo no mercado...")
+                st.write("Buscando cotações no mercado...")
                 cotacoes_dict = obter_cotacoes(st.session_state.email)
                 
                 st.write("Processando configurações de setores...")
