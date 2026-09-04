@@ -328,7 +328,7 @@ else:
         st.session_state.clear()
         st.rerun()
 
-    st.sidebar.markdown("---")
+    #st.sidebar.markdown("---")
 
     # Definição das páginas do menu
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
