@@ -1,10 +1,11 @@
 import streamlit as st
+
+# A configuração da página DEVE ser a primeira linha absoluta do app
+st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
+
 import pandas as pd
 import time
 from utils import ler_planilha, registrar_novo_usuario, db
-
-# A configuração da página DEVE ser a primeira linha do app
-st.set_page_config(page_title="App Investimentos v2.0", layout="wide", initial_sidebar_state="expanded")
 
 # --- CSS INJETADO: DESIGN PREMIUM E CORREÇÃO DE RESPONSIVIDADE ---
 st.markdown("""
@@ -72,18 +73,19 @@ if 'logado' not in st.session_state:
     st.session_state.admin_email = ""
 
 
-def disparar_login_por_enter():
-    st.session_state.tentativa_login = True
-
 # ==========================================
 # FUNÇÃO DA TELA DE ACESSO (LOGIN/CADASTRO)
 # ==========================================
 def tela_acesso():
-    import time 
-    
-    # Garante que a flag de Enter exista na sessão
+    # Garante que as flags de Enter existam na sessão
     if 'tentativa_login' not in st.session_state:
         st.session_state.tentativa_login = False
+    if 'tentativa_cadastro' not in st.session_state:
+        st.session_state.tentativa_cadastro = False
+    if 'tentativa_codigo' not in st.session_state:
+        st.session_state.tentativa_codigo = False
+    if 'tentativa_nova_senha' not in st.session_state:
+        st.session_state.tentativa_nova_senha = False
         
     painel_login = st.empty()
     
@@ -99,16 +101,19 @@ def tela_acesso():
                 with st.container(border=True):
                     email_input = st.text_input("E-mail", key="login_email")
                     
-                    # O parâmetro 'on_change' é o responsável por escutar o Enter no teclado
-                    senha_input = st.text_input("Senha", type="password", key="login_senha", on_change=disparar_login_por_enter)
+                    senha_input = st.text_input(
+                        "Senha", 
+                        type="password", 
+                        key="login_senha", 
+                        on_change=lambda: st.session_state.update({'tentativa_login': True})
+                    )
                     
                     submit_login = st.button("Entrar", use_container_width=True, type="primary")
                 
-                # A lógica agora avalia o clique no botão OU a tecla Enter
+                # A lógica avalia o clique no botão OU a tecla Enter
                 if submit_login or st.session_state.tentativa_login:
                     
-                    # Limpa a flag imediatamente para não causar loop de login
-                    st.session_state.tentativa_login = False 
+                    st.session_state.tentativa_login = False # Limpa a flag 
                     
                     agora = time.time()
                     if agora - st.session_state.last_login_time < 3:
@@ -150,10 +155,19 @@ def tela_acesso():
                     st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
                     cad_nome = st.text_input("Seu Nome Completo", key="cad_nome")
                     cad_email = st.text_input("Seu melhor E-mail", key="cad_email")
-                    cad_senha = st.text_input("Crie uma Senha", type="password", key="cad_senha")
+                    
+                    cad_senha = st.text_input(
+                        "Crie uma Senha", 
+                        type="password", 
+                        key="cad_senha",
+                        on_change=lambda: st.session_state.update({'tentativa_cadastro': True})
+                    )
+                    
                     submit_cadastro = st.button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
                 
-                if submit_cadastro:
+                if submit_cadastro or st.session_state.tentativa_cadastro:
+                    st.session_state.tentativa_cadastro = False
+                    
                     if not cad_nome or not cad_email or not cad_senha:
                         st.warning("Preencha todos os campos.")
                     else:
@@ -168,10 +182,18 @@ def tela_acesso():
                 if not st.session_state.codigo_recuperacao:
                     with st.container(border=True):
                         st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
-                        esq_email = st.text_input("E-mail Cadastrado", key="esq_email_input")
+                        
+                        esq_email = st.text_input(
+                            "E-mail Cadastrado", 
+                            key="esq_email_input",
+                            on_change=lambda: st.session_state.update({'tentativa_codigo': True})
+                        )
+                        
                         submit_codigo = st.button("Enviar Código", use_container_width=True, type="primary")
                     
-                    if submit_codigo:
+                    if submit_codigo or st.session_state.tentativa_codigo:
+                        st.session_state.tentativa_codigo = False
+                        
                         agora = time.time()
                         tempo_restante = 60 - (agora - st.session_state.last_email_time)
                         
@@ -202,7 +224,13 @@ def tela_acesso():
                         codigo_digitado = st.text_input("Código de 6 caracteres", key="cod_input")
                         st.markdown("---")
                         esq_nova_senha = st.text_input("Nova Senha", type="password", key="nova_senha")
-                        esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password", key="conf_senha")
+                        
+                        esq_confirma_senha = st.text_input(
+                            "Confirme a Nova Senha", 
+                            type="password", 
+                            key="conf_senha",
+                            on_change=lambda: st.session_state.update({'tentativa_nova_senha': True})
+                        )
                         
                         c_btn1, c_btn2 = st.columns(2)
                         submit_validar = c_btn1.button("Salvar Nova Senha", use_container_width=True, type="primary")
@@ -216,7 +244,9 @@ def tela_acesso():
                         time.sleep(0.1)
                         st.rerun()
                         
-                    elif submit_validar:
+                    elif submit_validar or st.session_state.tentativa_nova_senha:
+                        st.session_state.tentativa_nova_senha = False
+                        
                         if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
                             st.error("❌ Código incorreto.")
                         elif esq_nova_senha != esq_confirma_senha:
@@ -387,4 +417,3 @@ else:
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-    
