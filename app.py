@@ -78,19 +78,18 @@ if 'logado' not in st.session_state:
 def tela_acesso():
     import time 
     
-    # =====================================================================
-    # A MÁGICA: FLUSH RENDERING (Elimina a tela fantasma pacificamente)
-    # =====================================================================
-    if st.session_state.get('limpar_tela_login', False):
-        st.session_state.limpar_tela_login = False
+    # --- INTERSTITIAL (MATA A TELA FANTASMA) ---
+    if st.session_state.get('transicao_login', False):
+        st.session_state.transicao_login = False
         st.session_state.logado = True
         
-        # Desenha o spinner para forçar o navegador a apagar os formulários do DOM
-        with st.spinner("Preparando ambiente e conectando ao banco de dados..."):
-            time.sleep(0.4) 
-            
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #00C851;'>🔐 Autenticado com sucesso!</h2>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align: center; color: gray;'>Sincronizando ambiente... 🚀</h4>", unsafe_allow_html=True)
+        
+        time.sleep(0.5) 
         st.rerun()
-        return # Garante que o código abaixo não seja lido nesta passagem
+        return # Impede a renderização dos formulários
 
     st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
@@ -100,13 +99,12 @@ def tela_acesso():
         tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
         
         with tab_login:
-            # 1. FORMULÁRIO SEGURO (Garante o Enter nativo sem bugar clique fora)
+            # Formulário limpo: Enter garantido, zero cliques falsos!
             with st.form("form_login"):
                 email_input = st.text_input("E-mail")
                 senha_input = st.text_input("Senha", type="password")
                 submit_login = st.form_submit_button("Entrar", use_container_width=True, type="primary")
             
-            # 2. LÓGICA FORA DO FORMULÁRIO (Evita o erro Missing Submit Button)
             if submit_login:
                 agora = time.time()
                 if agora - st.session_state.last_login_time < 3:
@@ -129,8 +127,8 @@ def tela_acesso():
                             
                             st.cache_data.clear() 
                             
-                            # Aciona o Flush Rendering e recarrega
-                            st.session_state.limpar_tela_login = True
+                            # Aciona a tela de transição
+                            st.session_state.transicao_login = True
                             st.rerun() 
                             
                         elif status_usuario == 'Pendente':
@@ -141,12 +139,11 @@ def tela_acesso():
                         st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
-            with st.form("form_cadastro", clear_on_submit=True):
+            with st.form("form_cadastro"):
                 st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
                 cad_nome = st.text_input("Seu Nome Completo")
                 cad_email = st.text_input("Seu melhor E-mail")
                 cad_senha = st.text_input("Crie uma Senha", type="password")
-                
                 submit_cadastro = st.form_submit_button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
             
             if submit_cadastro:
@@ -165,13 +162,11 @@ def tela_acesso():
                 with st.form("form_pedir_codigo"):
                     st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
                     esq_email = st.text_input("E-mail Cadastrado")
-                    
                     submit_codigo = st.form_submit_button("Enviar Código", use_container_width=True, type="primary")
                 
                 if submit_codigo:
                     agora = time.time()
                     tempo_restante = 60 - (agora - st.session_state.last_email_time)
-                    
                     if tempo_restante > 0:
                         st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
                     elif not esq_email:
@@ -198,16 +193,16 @@ def tela_acesso():
                     esq_nova_senha = st.text_input("Nova Senha", type="password")
                     esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
                     
-                    c_btn1, c_btn2 = st.columns(2)
-                    submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", use_container_width=True, type="primary")
-                    submit_cancelar = c_btn2.form_submit_button("Cancelar", use_container_width=True)
+                    # O botão de submit precisa ficar SOZINHO no formulário (Sem usar st.columns)
+                    submit_validar = st.form_submit_button("Salvar Nova Senha", use_container_width=True, type="primary")
                 
-                if submit_cancelar:
+                # O botão de cancelar fica FORA do form para não dar conflito!
+                if st.button("Cancelar Solicitação", use_container_width=True):
                     st.session_state.codigo_recuperacao = None
                     st.session_state.email_recuperacao = None
                     st.rerun()
                     
-                elif submit_validar:
+                if submit_validar:
                     if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
                         st.error("❌ Código incorreto.")
                     elif esq_nova_senha != esq_confirma_senha:
