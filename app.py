@@ -40,11 +40,11 @@ st.markdown("""
         [data-testid="stMetricLabel"] { font-weight: 600 !important; color: gray !important; }
         
         /* 5. VISUAL PREMIUM PARA BOTÕES (Arredondamento e Flutuação) */
-        .stButton > button {
+        .stButton > button, [data-testid="baseButton-secondary"] {
             border-radius: 6px !important;
             transition: all 0.2s ease-in-out !important;
         }
-        .stButton > button:hover {
+        .stButton > button:hover, [data-testid="baseButton-secondary"]:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
@@ -61,7 +61,6 @@ from menu import resumo, saldo, aportes, configuracao, lancamentos, perfil, back
 # Variáveis Globais de Sessão
 if 'logado' not in st.session_state:
     st.session_state.logado = False
-    st.session_state.transicao_login = False
     st.session_state.email = ""
     st.session_state.nome = ""
     st.session_state.codigo_recuperacao = None
@@ -77,6 +76,22 @@ if 'logado' not in st.session_state:
 # FUNÇÃO DA TELA DE ACESSO (LOGIN/CADASTRO)
 # ==========================================
 def tela_acesso():
+    import time 
+    
+    # =====================================================================
+    # A MÁGICA: FLUSH RENDERING (Elimina a tela fantasma pacificamente)
+    # =====================================================================
+    if st.session_state.get('limpar_tela_login', False):
+        st.session_state.limpar_tela_login = False
+        st.session_state.logado = True
+        
+        # Desenha o spinner para forçar o navegador a apagar os formulários do DOM
+        with st.spinner("Preparando ambiente e conectando ao banco de dados..."):
+            time.sleep(0.4) 
+            
+        st.rerun()
+        return # Garante que o código abaixo não seja lido nesta passagem
+
     st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -85,13 +100,13 @@ def tela_acesso():
         tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
         
         with tab_login:
-            # 1. Formulário Limpo: O Enter funcionará perfeitamente aqui
+            # 1. FORMULÁRIO SEGURO (Garante o Enter nativo sem bugar clique fora)
             with st.form("form_login"):
                 email_input = st.text_input("E-mail")
                 senha_input = st.text_input("Senha", type="password")
                 submit_login = st.form_submit_button("Entrar", use_container_width=True, type="primary")
             
-            # 2. Lógica separada: Sem apagar a tela forçadamente
+            # 2. LÓGICA FORA DO FORMULÁRIO (Evita o erro Missing Submit Button)
             if submit_login:
                 agora = time.time()
                 if agora - st.session_state.last_login_time < 3:
@@ -114,8 +129,8 @@ def tela_acesso():
                             
                             st.cache_data.clear() 
                             
-                            # A MÁGICA DA TRANSIÇÃO: Ativa a tela de carregamento suave
-                            st.session_state.transicao_login = True
+                            # Aciona o Flush Rendering e recarrega
+                            st.session_state.limpar_tela_login = True
                             st.rerun() 
                             
                         elif status_usuario == 'Pendente':
@@ -126,12 +141,12 @@ def tela_acesso():
                         st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
-            # O Enter submete nativamente após digitar a senha
             with st.form("form_cadastro", clear_on_submit=True):
                 st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
                 cad_nome = st.text_input("Seu Nome Completo")
                 cad_email = st.text_input("Seu melhor E-mail")
                 cad_senha = st.text_input("Crie uma Senha", type="password")
+                
                 submit_cadastro = st.form_submit_button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
             
             if submit_cadastro:
@@ -147,15 +162,16 @@ def tela_acesso():
                             
         with tab_esqueci:
             if not st.session_state.codigo_recuperacao:
-                # O Enter envia nativamente o e-mail
                 with st.form("form_pedir_codigo"):
                     st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
                     esq_email = st.text_input("E-mail Cadastrado")
+                    
                     submit_codigo = st.form_submit_button("Enviar Código", use_container_width=True, type="primary")
                 
                 if submit_codigo:
                     agora = time.time()
                     tempo_restante = 60 - (agora - st.session_state.last_email_time)
+                    
                     if tempo_restante > 0:
                         st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
                     elif not esq_email:
@@ -268,28 +284,13 @@ def painel_admin():
 
 
 # ==========================================
-# ROTEAMENTO NATIVO E TELA DE TRANSIÇÃO
+# ROTEAMENTO NATIVO (ST.NAVIGATION)
 # ==========================================
-
-# 1. O Amortecedor Visual: Exibe o carregamento e força o frontend a limpar o Login
-if st.session_state.get('transicao_login', False):
-    st.session_state.transicao_login = False
-    st.session_state.logado = True
-    
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align: center; color: #00C851;'>🔐 Autenticado com sucesso!</h2>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: gray;'>Sincronizando ambiente com o banco de dados... 🚀</h4>", unsafe_allow_html=True)
-    
-    time.sleep(0.4) # Dá o tempo perfeito para o React apagar os formulários do DOM
-    st.rerun()
-
-# 2. Tela de Login Padrão
-elif not st.session_state.logado:
+if not st.session_state.logado:
     st.markdown("""<style>[data-testid="collapsedControl"] {display: none;}</style>""", unsafe_allow_html=True)
     pg = st.navigation([st.Page(tela_acesso, title="Acesso Restrito", url_path="login")])
     pg.run()
-
-# 3. App Principal (Logado)
+    
 else:
     if not st.session_state.get('is_admin', False):
         st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
