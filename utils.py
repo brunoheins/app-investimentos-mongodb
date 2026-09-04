@@ -354,7 +354,7 @@ def buscar_setor_yahoo(ativo, categoria):
 
 
 # ==============================================================
-# MOTOR DE COTAÇÕES 100% SOB DEMANDA COM CACHE DE RAM ISOLADO
+# MOTOR DE COTAÇÕES 100% SOB DEMANDA COM CACHE DE RAM ISOLADO (Otimizado)
 # ==============================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def obter_cotacoes(email_usuario):
@@ -387,17 +387,24 @@ def obter_cotacoes(email_usuario):
     except Exception as e:
         print(f"Erro ao buscar lista de ativos do usuário: {e}")
         
-    if not ativos_buscados: return cotacoes
+    if not ativos_buscados: 
+        return cotacoes
 
     agora = datetime.now()
     limite_tempo = agora - timedelta(hours=1)
     
     ativos_para_atualizar = []
     
-    # 2. CONSULTA CIRÚRGICA NO BANCO
+    # 2. CONSULTA CIRÚRGICA EM LOTE NO MONGO (Substitui o loop de find_one)
+    try:
+        docs_cache = list(db.cotacoes_cache.find({"_id": {"$in": list(ativos_buscados)}}))
+        mapa_cache = {doc["_id"]: doc for doc in docs_cache}
+    except Exception as e:
+        print(f"Erro ao consultar cache em lote: {e}")
+        mapa_cache = {}
+
     for ativo in ativos_buscados:
-        doc = db.cotacoes_cache.find_one({"_id": ativo})
-        
+        doc = mapa_cache.get(ativo)
         if doc and doc.get("ultima_atualizacao", datetime.min) > limite_tempo:
             cotacoes[ativo] = doc.get("preco", 0.0)
         else:
@@ -411,34 +418,27 @@ def obter_cotacoes(email_usuario):
     ativos_bolsa_pedidos = [a for a in ativos_para_atualizar if a not in titulos_td_pedidos]
     
     # --- 3A. ATUALIZAR TESOURO DIRETO ---
-    #df_td = pd.read_csv("https://www.tesourodireto.com.br/documents/d/guest/rendimento-resgatar-csv?download=true", sep=';', encoding='utf-8-sig', storage_options={'User-Agent': 'Mozilla/5.0'})
-    # --- 3A. ATUALIZAR TESOURO DIRETO ---
     if titulos_td_pedidos:
         mapa_td_limpo = {}
         
         def normalizar_nome_td(nome):
-            # TESOURO IPCA+ 2032 -> TESOUROIPCA2032
             return re.sub(r'[^A-Z0-9]', '', str(nome).upper())
 
-        # 1. Configuração de disfarce para evitar bloqueios
         headers_td = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest"
         }
         
-        # 2. Busca na API
         urls_para_tentar = [
-            "https://tesouro.gabriso.com/bonds"#,
-            #"https://api.radaropcoes.com/bonds.json"
+            "https://tesouro.gabriso.com/bonds"
         ]
         
         sucesso_api = False
-        
         for url in urls_para_tentar:
-            if sucesso_api: break
+            if sucesso_api: 
+                break
             try:
                 res_alt = requests.get(url, headers=headers_td, timeout=10)
-                
                 if res_alt.status_code == 200:
                     dados_json = res_alt.json()
                     lista_bonds = dados_json.get("bonds", [])
@@ -447,27 +447,22 @@ def obter_cotacoes(email_usuario):
                         for bond in lista_bonds:
                             nome_original = str(bond.get("name", ""))
                             chave_limpa = normalizar_nome_td(nome_original)
-                            
                             preco_resgate = bond.get("unitary_redemption_value", 0.0)
                             preco = extrair_numero_br(preco_resgate)
                             
                             if chave_limpa and preco > 0:
                                 mapa_td_limpo[chave_limpa] = preco
-                        
                         sucesso_api = True
             except:
-                pass # Silencia qualquer erro de conexão
+                pass 
 
-        # 3. Cruza com a carteira, atualiza o banco ou usa o Backup Silencioso
         for titulo in titulos_td_pedidos:
             chave_busca = normalizar_nome_td(titulo)
             
             if chave_busca in mapa_td_limpo:
-                # Preço fresco da API
                 preco_td = mapa_td_limpo[chave_busca]
                 cotacoes[titulo] = preco_td
                 
-                # Salva o preço fresco no MongoDB como Backup
                 try:
                     db.cotacoes_cache.update_one(
                         {"_id": titulo},
@@ -477,8 +472,7 @@ def obter_cotacoes(email_usuario):
                 except:
                     pass
             else:
-                # FALLBACK INVISÍVEL: Se a API falhou ou não achou, resgata a última cotação do banco
-                doc_velho = db.cotacoes_cache.find_one({"_id": titulo})
+                doc_velho = mapa_cache.get(titulo)
                 if doc_velho: 
                     cotacoes[titulo] = doc_velho.get("preco", cotacoes.get(titulo, 0.0))
     
@@ -493,7 +487,8 @@ def obter_cotacoes(email_usuario):
             if "." not in ticker and re.search(r'\d+$', ticker):
                 ticker = f"{ticker}.SA"
             
-            if not ticker.endswith(".SA"): tem_exterior = True
+            if not ticker.endswith(".SA"): 
+                tem_exterior = True
                 
             tickers_yf.append(ticker)
             mapa_tickers[ticker] = ativo
@@ -526,7 +521,8 @@ def obter_cotacoes(email_usuario):
                             break
                             
             for ticker in tickers_yf:
-                if ticker == "BRL=X": continue
+                if ticker == "BRL=X": 
+                    continue
                 
                 preco = None
                 for p_col in ['Close', 'Adj Close']:
@@ -559,8 +555,9 @@ def obter_cotacoes(email_usuario):
                     )
         except Exception as e:
             for ativo in ativos_bolsa_pedidos:
-                doc_velho = db.cotacoes_cache.find_one({"_id": ativo})
-                if doc_velho: cotacoes[ativo] = doc_velho.get("preco", cotacoes.get(ativo, 0.0))
+                doc_velho = mapa_cache.get(ativo)
+                if doc_velho: 
+                    cotacoes[ativo] = doc_velho.get("preco", cotacoes.get(ativo, 0.0))
 
     return cotacoes
     
