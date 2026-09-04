@@ -72,16 +72,21 @@ if 'logado' not in st.session_state:
     st.session_state.admin_email = ""
 
 
+def disparar_login_por_enter():
+    st.session_state.tentativa_login = True
+
 # ==========================================
 # FUNÇÃO DA TELA DE ACESSO (LOGIN/CADASTRO)
 # ==========================================
 def tela_acesso():
     import time 
     
-    # 1. Trazemos o contêiner vazio de volta (agora ele é 100% seguro)
+    # Garante que a flag de Enter exista na sessão
+    if 'tentativa_login' not in st.session_state:
+        st.session_state.tentativa_login = False
+        
     painel_login = st.empty()
     
-    # 2. Renderiza a tela dentro dele
     with painel_login.container():
         st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -93,10 +98,18 @@ def tela_acesso():
             with tab_login:
                 with st.container(border=True):
                     email_input = st.text_input("E-mail", key="login_email")
-                    senha_input = st.text_input("Senha", type="password", key="login_senha")
+                    
+                    # O parâmetro 'on_change' é o responsável por escutar o Enter no teclado
+                    senha_input = st.text_input("Senha", type="password", key="login_senha", on_change=disparar_login_por_enter)
+                    
                     submit_login = st.button("Entrar", use_container_width=True, type="primary")
                 
-                if submit_login:
+                # A lógica agora avalia o clique no botão OU a tecla Enter
+                if submit_login or st.session_state.tentativa_login:
+                    
+                    # Limpa a flag imediatamente para não causar loop de login
+                    st.session_state.tentativa_login = False 
+                    
                     agora = time.time()
                     if agora - st.session_state.last_login_time < 3:
                         st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
@@ -120,7 +133,6 @@ def tela_acesso():
                                 
                                 st.cache_data.clear() 
                                 
-                                # 3. O Apagão Limpo (agora sem causar erros no frontend)
                                 painel_login.empty()
                                 time.sleep(0.1)
                                 
