@@ -298,13 +298,10 @@ else:
     if not st.session_state.get('is_admin', False):
         st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
 
-    # =========================================================
-    # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
-    # =========================================================
+    # Identifica se está em modo de personificação
     is_personificando = st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', '')
 
     if is_personificando:
-        # Pinta o menu de vermelho e põe borda vermelha
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {
@@ -314,6 +311,26 @@ else:
             </style>
         """, unsafe_allow_html=True)
 
+    # =========================================================================
+    # RENDERIZAÇÃO ANTECIPADA DA BARRA LATERAL (Garantiu estabilidade em "Perfil")
+    # =========================================================================
+    if is_personificando:
+        st.sidebar.markdown(
+            f"""
+            <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 6px; text-align: center; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+                ⚠️ <b>MODO ADMIN</b><br>Vendo como:<br><b>{st.session_state.nome}</b>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
+    if st.sidebar.button("🚪 Sair do App", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+
+    st.sidebar.markdown("---")
+
+    # Definição das páginas do menu
     menu_usuario = [st.Page(perfil.render, title="Meu Perfil", icon="👤", url_path="perfil")]
     if st.session_state.get('is_admin', False):
         menu_usuario.append(st.Page(painel_admin, title="Painel Admin", icon="🛠️", url_path="admin"))
@@ -335,18 +352,3 @@ else:
     })
     
     pg.run()
-
-    # RENDERIZA O AVISO DE FORMA NATIVA (Fica logo acima do botão Sair)
-    if is_personificando:
-        st.sidebar.markdown(
-            f"""
-            <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 6px; text-align: center; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                ⚠️ <b>MODO ADMIN</b><br>Vendo como:<br><b>{st.session_state.nome}</b>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
-
-    if st.sidebar.button("🚪 Sair do App", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
