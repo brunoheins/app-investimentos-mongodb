@@ -86,13 +86,12 @@ def tela_acesso():
         tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
         
         with tab_login:
-            # 1. BLOCO DO FORMULÁRIO (Apenas visual)
-            with st.form("form_login"):
-                email_input = st.text_input("E-mail")
-                senha_input = st.text_input("Senha", type="password")
-                submit_login = st.form_submit_button("Entrar", use_container_width=True)
-                
-            # 2. BLOCO DE LÓGICA (FORA DO FORMULÁRIO)
+            # 1. Usando inputs e botões padrão (Sem st.form)
+            email_input = st.text_input("E-mail", key="login_email")
+            senha_input = st.text_input("Senha", type="password", key="login_senha")
+            
+            submit_login = st.button("Entrar", use_container_width=True, type="primary")
+            
             if submit_login:
                 agora = time.time()
                 if agora - st.session_state.last_login_time < 3:
@@ -126,33 +125,31 @@ def tela_acesso():
                         st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
-            # 1. BLOCO DO FORMULÁRIO (Apenas visual)
-            with st.form("form_cadastro", clear_on_submit=True):
-                st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
-                cad_nome = st.text_input("Seu Nome Completo")
-                cad_email = st.text_input("Seu melhor E-mail")
-                cad_senha = st.text_input("Crie uma Senha", type="password")
-                submit_cadastro = st.form_submit_button("Enviar Solicitação de Acesso", use_container_width=True)
-                
-            # 2. BLOCO DE LÓGICA (FORA DO FORMULÁRIO)
+            st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
+            cad_nome = st.text_input("Seu Nome Completo", key="cad_nome")
+            cad_email = st.text_input("Seu melhor E-mail", key="cad_email")
+            cad_senha = st.text_input("Crie uma Senha", type="password", key="cad_senha")
+            
+            submit_cadastro = st.button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
+            
             if submit_cadastro:
                 if not cad_nome or not cad_email or not cad_senha:
                     st.warning("Preencha todos os campos.")
                 else:
                     with st.spinner("Registrando..."):
                         sucesso, msg = registrar_novo_usuario(cad_nome, cad_email, cad_senha)
-                        if sucesso: st.success(msg)
-                        else: st.error(msg)
+                        if sucesso: 
+                            st.success(msg)
+                        else: 
+                            st.error(msg)
                             
         with tab_esqueci:
             if not st.session_state.codigo_recuperacao:
-                # 1. BLOCO DO FORMULÁRIO (Apenas visual)
-                with st.form("form_pedir_codigo"):
-                    st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
-                    esq_email = st.text_input("E-mail Cadastrado")
-                    submit_codigo = st.form_submit_button("Enviar Código", use_container_width=True)
-                    
-                # 2. BLOCO DE LÓGICA (FORA DO FORMULÁRIO)
+                st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
+                esq_email = st.text_input("E-mail Cadastrado", key="esq_email_input")
+                
+                submit_codigo = st.button("Enviar Código", use_container_width=True, type="primary")
+                
                 if submit_codigo:
                     agora = time.time()
                     tempo_restante = 60 - (agora - st.session_state.last_email_time)
@@ -176,19 +173,16 @@ def tela_acesso():
                                 else: st.error(msg)
                             else: st.error("E-mail não encontrado.")
             else:
-                # 1. BLOCO DO FORMULÁRIO (Apenas visual)
-                with st.form("form_nova_senha"):
-                    st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
-                    codigo_digitado = st.text_input("Código de 6 caracteres")
-                    st.markdown("---")
-                    esq_nova_senha = st.text_input("Nova Senha", type="password")
-                    esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
-                    
-                    c_btn1, c_btn2 = st.columns(2)
-                    submit_validar = c_btn1.form_submit_button("Salvar Nova Senha", use_container_width=True)
-                    submit_cancelar = c_btn2.form_submit_button("Cancelar", use_container_width=True)
-                    
-                # 2. BLOCO DE LÓGICA (FORA DO FORMULÁRIO)
+                st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
+                codigo_digitado = st.text_input("Código de 6 caracteres", key="cod_input")
+                st.markdown("---")
+                esq_nova_senha = st.text_input("Nova Senha", type="password", key="nova_senha")
+                esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password", key="conf_senha")
+                
+                c_btn1, c_btn2 = st.columns(2)
+                submit_validar = c_btn1.button("Salvar Nova Senha", use_container_width=True, type="primary")
+                submit_cancelar = c_btn2.button("Cancelar", use_container_width=True)
+                
                 if submit_cancelar:
                     st.session_state.codigo_recuperacao = None
                     st.session_state.email_recuperacao = None
