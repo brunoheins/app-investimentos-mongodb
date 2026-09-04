@@ -78,138 +78,149 @@ if 'logado' not in st.session_state:
 def tela_acesso():
     import time 
     
-    st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+    # 1. Trazemos o contêiner vazio de volta (agora ele é 100% seguro)
+    painel_login = st.empty()
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
+    # 2. Renderiza a tela dentro dele
+    with painel_login.container():
+        st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        with tab_login:
-            # 1. Contêiner visual para agrupar os campos
-            with st.container(border=True):
-                email_input = st.text_input("E-mail", key="login_email")
-                senha_input = st.text_input("Senha", type="password", key="login_senha")
-                submit_login = st.button("Entrar", use_container_width=True, type="primary")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
             
-            # 2. Lógica separada do contêiner
-            if submit_login:
-                agora = time.time()
-                if agora - st.session_state.last_login_time < 3:
-                    st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
-                else:
-                    st.session_state.last_login_time = agora
-                    email_formatado = email_input.strip().lower()
-                    senha_formatada = senha_input.strip()
-                    
-                    usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
-                    
-                    if usuario:
-                        status_usuario = str(usuario.get('status', 'Pendente')).strip().capitalize()
-                        if status_usuario == 'Ativo':
-                            st.session_state.logado = True
-                            st.session_state.email = email_formatado
-                            st.session_state.nome = usuario.get('nome', 'Usuário')
-                            
-                            st.session_state.email_autenticado = email_formatado
-                            st.session_state.is_admin = usuario.get('admin', False)
-                            st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
-                            
-                            st.cache_data.clear() 
-                            st.rerun() 
-                            
-                        elif status_usuario == 'Pendente':
-                            st.warning("⏳ Seu cadastro está em análise pelo administrador.")
-                        else:
-                            st.error("❌ Seu acesso foi revogado.")
-                    else:
-                        st.error("❌ Usuário ou senha incorretos.")
-
-        with tab_cadastro:
-            # 1. Contêiner visual
-            with st.container(border=True):
-                st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
-                cad_nome = st.text_input("Seu Nome Completo", key="cad_nome")
-                cad_email = st.text_input("Seu melhor E-mail", key="cad_email")
-                cad_senha = st.text_input("Crie uma Senha", type="password", key="cad_senha")
-                submit_cadastro = st.button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
-            
-            # 2. Lógica separada
-            if submit_cadastro:
-                if not cad_nome or not cad_email or not cad_senha:
-                    st.warning("Preencha todos os campos.")
-                else:
-                    with st.spinner("Registrando..."):
-                        sucesso, msg = registrar_novo_usuario(cad_nome, cad_email, cad_senha)
-                        if sucesso: 
-                            st.success(msg)
-                        else: 
-                            st.error(msg)
-                            
-        with tab_esqueci:
-            if not st.session_state.codigo_recuperacao:
-                # 1. Contêiner visual (Pedir Email)
+            with tab_login:
                 with st.container(border=True):
-                    st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
-                    esq_email = st.text_input("E-mail Cadastrado", key="esq_email_input")
-                    submit_codigo = st.button("Enviar Código", use_container_width=True, type="primary")
+                    email_input = st.text_input("E-mail", key="login_email")
+                    senha_input = st.text_input("Senha", type="password", key="login_senha")
+                    submit_login = st.button("Entrar", use_container_width=True, type="primary")
                 
-                # 2. Lógica separada
-                if submit_codigo:
+                if submit_login:
                     agora = time.time()
-                    tempo_restante = 60 - (agora - st.session_state.last_email_time)
-                    
-                    if tempo_restante > 0:
-                        st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
-                    elif not esq_email:
-                        st.warning("Preencha o campo de e-mail.")
+                    if agora - st.session_state.last_login_time < 3:
+                        st.warning("⏳ Muitas tentativas seguidas. Aguarde alguns segundos para tentar novamente.")
                     else:
-                        st.session_state.last_email_time = agora
-                        with st.spinner("Enviando e-mail..."):
-                            from utils import verificar_email_cadastrado, enviar_codigo_email
-                            import random, string
-                            if verificar_email_cadastrado(esq_email):
-                                codigo_gerado = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-                                sucesso, msg = enviar_codigo_email(esq_email, codigo_gerado)
-                                if sucesso:
-                                    st.session_state.codigo_recuperacao = codigo_gerado
-                                    st.session_state.email_recuperacao = esq_email.strip().lower()
-                                    st.rerun()
-                                else: st.error(msg)
-                            else: st.error("E-mail não encontrado.")
-            else:
-                # 1. Contêiner visual (Nova Senha)
+                        st.session_state.last_login_time = agora
+                        email_formatado = email_input.strip().lower()
+                        senha_formatada = senha_input.strip()
+                        
+                        usuario = db.usuarios.find_one({"_id": email_formatado, "senha": senha_formatada})
+                        
+                        if usuario:
+                            status_usuario = str(usuario.get('status', 'Pendente')).strip().capitalize()
+                            if status_usuario == 'Ativo':
+                                st.session_state.logado = True
+                                st.session_state.email = email_formatado
+                                st.session_state.nome = usuario.get('nome', 'Usuário')
+                                
+                                st.session_state.email_autenticado = email_formatado
+                                st.session_state.is_admin = usuario.get('admin', False)
+                                st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
+                                
+                                st.cache_data.clear() 
+                                
+                                # 3. O Apagão Limpo (agora sem causar erros no frontend)
+                                painel_login.empty()
+                                time.sleep(0.1)
+                                
+                                st.rerun() 
+                                
+                            elif status_usuario == 'Pendente':
+                                st.warning("⏳ Seu cadastro está em análise pelo administrador.")
+                            else:
+                                st.error("❌ Seu acesso foi revogado.")
+                        else:
+                            st.error("❌ Usuário ou senha incorretos.")
+
+            with tab_cadastro:
                 with st.container(border=True):
-                    st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
-                    codigo_digitado = st.text_input("Código de 6 caracteres", key="cod_input")
-                    st.markdown("---")
-                    esq_nova_senha = st.text_input("Nova Senha", type="password", key="nova_senha")
-                    esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password", key="conf_senha")
-                    
-                    c_btn1, c_btn2 = st.columns(2)
-                    submit_validar = c_btn1.button("Salvar Nova Senha", use_container_width=True, type="primary")
-                    submit_cancelar = c_btn2.button("Cancelar", use_container_width=True)
+                    st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
+                    cad_nome = st.text_input("Seu Nome Completo", key="cad_nome")
+                    cad_email = st.text_input("Seu melhor E-mail", key="cad_email")
+                    cad_senha = st.text_input("Crie uma Senha", type="password", key="cad_senha")
+                    submit_cadastro = st.button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
                 
-                # 2. Lógica separada
-                if submit_cancelar:
-                    st.session_state.codigo_recuperacao = None
-                    st.session_state.email_recuperacao = None
-                    st.rerun()
-                    
-                elif submit_validar:
-                    if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
-                        st.error("❌ Código incorreto.")
-                    elif esq_nova_senha != esq_confirma_senha:
-                        st.error("❌ As senhas não conferem.")
+                if submit_cadastro:
+                    if not cad_nome or not cad_email or not cad_senha:
+                        st.warning("Preencha todos os campos.")
                     else:
-                        from utils import redefinir_senha_aprovada
-                        sucesso, msg = redefinir_senha_aprovada(st.session_state.email_recuperacao, esq_nova_senha)
-                        if sucesso:
-                            st.success(msg)
-                            st.session_state.codigo_recuperacao = None
-                            st.session_state.email_recuperacao = None
-                            st.rerun()
-                        else: st.error(msg)                            
+                        with st.spinner("Registrando..."):
+                            sucesso, msg = registrar_novo_usuario(cad_nome, cad_email, cad_senha)
+                            if sucesso: 
+                                st.success(msg)
+                            else: 
+                                st.error(msg)
+                                
+            with tab_esqueci:
+                if not st.session_state.codigo_recuperacao:
+                    with st.container(border=True):
+                        st.info("Digite seu e-mail cadastrado. Enviaremos um código de 6 caracteres.")
+                        esq_email = st.text_input("E-mail Cadastrado", key="esq_email_input")
+                        submit_codigo = st.button("Enviar Código", use_container_width=True, type="primary")
+                    
+                    if submit_codigo:
+                        agora = time.time()
+                        tempo_restante = 60 - (agora - st.session_state.last_email_time)
+                        
+                        if tempo_restante > 0:
+                            st.warning(f"⏳ Para sua segurança, aguarde {int(tempo_restante)} segundos antes de solicitar um novo código.")
+                        elif not esq_email:
+                            st.warning("Preencha o campo de e-mail.")
+                        else:
+                            st.session_state.last_email_time = agora
+                            with st.spinner("Enviando e-mail..."):
+                                from utils import verificar_email_cadastrado, enviar_codigo_email
+                                import random, string
+                                if verificar_email_cadastrado(esq_email):
+                                    codigo_gerado = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                                    sucesso, msg = enviar_codigo_email(esq_email, codigo_gerado)
+                                    if sucesso:
+                                        st.session_state.codigo_recuperacao = codigo_gerado
+                                        st.session_state.email_recuperacao = esq_email.strip().lower()
+                                        
+                                        painel_login.empty()
+                                        time.sleep(0.1)
+                                        st.rerun()
+                                    else: st.error(msg)
+                                else: st.error("E-mail não encontrado.")
+                else:
+                    with st.container(border=True):
+                        st.success(f"📧 O código foi enviado para **{st.session_state.email_recuperacao}**!")
+                        codigo_digitado = st.text_input("Código de 6 caracteres", key="cod_input")
+                        st.markdown("---")
+                        esq_nova_senha = st.text_input("Nova Senha", type="password", key="nova_senha")
+                        esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password", key="conf_senha")
+                        
+                        c_btn1, c_btn2 = st.columns(2)
+                        submit_validar = c_btn1.button("Salvar Nova Senha", use_container_width=True, type="primary")
+                        submit_cancelar = c_btn2.button("Cancelar", use_container_width=True)
+                    
+                    if submit_cancelar:
+                        st.session_state.codigo_recuperacao = None
+                        st.session_state.email_recuperacao = None
+                        
+                        painel_login.empty()
+                        time.sleep(0.1)
+                        st.rerun()
+                        
+                    elif submit_validar:
+                        if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
+                            st.error("❌ Código incorreto.")
+                        elif esq_nova_senha != esq_confirma_senha:
+                            st.error("❌ As senhas não conferem.")
+                        else:
+                            from utils import redefinir_senha_aprovada
+                            sucesso, msg = redefinir_senha_aprovada(st.session_state.email_recuperacao, esq_nova_senha)
+                            if sucesso:
+                                st.success(msg)
+                                st.session_state.codigo_recuperacao = None
+                                st.session_state.email_recuperacao = None
+                                
+                                painel_login.empty()
+                                time.sleep(0.1)
+                                st.rerun()
+                            else: st.error(msg)
 
 
 # ==========================================
