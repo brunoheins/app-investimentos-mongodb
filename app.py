@@ -78,19 +78,6 @@ if 'logado' not in st.session_state:
 def tela_acesso():
     import time 
     
-    # --- INTERSTITIAL (MATA A TELA FANTASMA) ---
-    if st.session_state.get('transicao_login', False):
-        st.session_state.transicao_login = False
-        st.session_state.logado = True
-        
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center; color: #00C851;'>🔐 Autenticado com sucesso!</h2>", unsafe_allow_html=True)
-        st.markdown("<h4 style='text-align: center; color: gray;'>Sincronizando ambiente... 🚀</h4>", unsafe_allow_html=True)
-        
-        time.sleep(0.5) 
-        st.rerun()
-        return # Impede a renderização dos formulários
-
     st.markdown("<h1 style='text-align: center;'>🔑 Acesso ao Sistema de Investimentos</h1>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -99,12 +86,13 @@ def tela_acesso():
         tab_login, tab_cadastro, tab_esqueci = st.tabs(["Entrar", "Novo Cadastro", "Esqueci a Senha"])
         
         with tab_login:
-            # Formulário limpo: Enter garantido, zero cliques falsos!
+            # 1. Formulário nativo: Garante o Enter perfeito e evita disparos ao clicar fora
             with st.form("form_login"):
                 email_input = st.text_input("E-mail")
                 senha_input = st.text_input("Senha", type="password")
                 submit_login = st.form_submit_button("Entrar", use_container_width=True, type="primary")
             
+            # 2. Lógica de validação isolada e segura
             if submit_login:
                 agora = time.time()
                 if agora - st.session_state.last_login_time < 3:
@@ -126,9 +114,7 @@ def tela_acesso():
                             st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
                             
                             st.cache_data.clear() 
-                            
-                            # Aciona a tela de transição
-                            st.session_state.transicao_login = True
+                            st.session_state.logado = True
                             st.rerun() 
                             
                         elif status_usuario == 'Pendente':
@@ -139,11 +125,12 @@ def tela_acesso():
                         st.error("❌ Usuário ou senha incorretos.")
 
         with tab_cadastro:
-            with st.form("form_cadastro"):
+            with st.form("form_cadastro", clear_on_submit=True):
                 st.info("Preencha os dados abaixo. Seu acesso será liberado após a aprovação.")
                 cad_nome = st.text_input("Seu Nome Completo")
                 cad_email = st.text_input("Seu melhor E-mail")
                 cad_senha = st.text_input("Crie uma Senha", type="password")
+                
                 submit_cadastro = st.form_submit_button("Enviar Solicitação de Acesso", use_container_width=True, type="primary")
             
             if submit_cadastro:
@@ -193,16 +180,15 @@ def tela_acesso():
                     esq_nova_senha = st.text_input("Nova Senha", type="password")
                     esq_confirma_senha = st.text_input("Confirme a Nova Senha", type="password")
                     
-                    # O botão de submit precisa ficar SOZINHO no formulário (Sem usar st.columns)
                     submit_validar = st.form_submit_button("Salvar Nova Senha", use_container_width=True, type="primary")
+                    submit_cancelar = st.form_submit_button("Cancelar Solicitação", use_container_width=True)
                 
-                # O botão de cancelar fica FORA do form para não dar conflito!
-                if st.button("Cancelar Solicitação", use_container_width=True):
+                if submit_cancelar:
                     st.session_state.codigo_recuperacao = None
                     st.session_state.email_recuperacao = None
                     st.rerun()
                     
-                if submit_validar:
+                elif submit_validar:
                     if codigo_digitado.strip().upper() != st.session_state.codigo_recuperacao:
                         st.error("❌ Código incorreto.")
                     elif esq_nova_senha != esq_confirma_senha:
@@ -216,7 +202,7 @@ def tela_acesso():
                             st.session_state.email_recuperacao = None
                             st.rerun()
                         else: st.error(msg)
-
+                            
 
 # ==========================================
 # FUNÇÃO DA TELA DE PAINEL ADMIN
