@@ -352,6 +352,7 @@ else:
             unsafe_allow_html=True
         )
 
-    if st.sidebar.button("🚪 Sair do App", width='stretch'):
+    if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
+    
