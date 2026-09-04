@@ -70,8 +70,6 @@ if 'logado' not in st.session_state:
     st.session_state.email_autenticado = ""
     st.session_state.is_admin = False
     st.session_state.admin_email = ""
-    st.session_state.personificando = False
-    st.session_state.nome_admin_original = ""
 
 
 # ==========================================
@@ -115,8 +113,6 @@ def tela_acesso():
                                 st.session_state.email_autenticado = email_formatado
                                 st.session_state.is_admin = usuario.get('admin', False)
                                 st.session_state.admin_email = email_formatado if st.session_state.is_admin else ""
-                                st.session_state.nome_admin_original = st.session_state.nome
-                                st.session_state.personificando = False
                                 
                                 st.cache_data.clear() 
                                 st.session_state.logado = True
@@ -275,42 +271,19 @@ def painel_admin():
         if lista_users:
             opcoes = {u['email']: f"{u['nome']} ({u['email']})" for u in lista_users}
             emails_list = list(opcoes.keys())
-            
-            current_target = st.session_state.email if st.session_state.get('personificando', False) else st.session_state.admin_email
-            current_idx = emails_list.index(current_target) if current_target in emails_list else 0
+            current_idx = emails_list.index(st.session_state.email) if st.session_state.email in emails_list else 0
             
             escolha = st.selectbox(
                 "🔎 Buscar usuário para personificar:", 
                 options=emails_list, 
                 format_func=lambda x: opcoes[x],
-                index=current_idx,
-                key="select_personificacao"
+                index=current_idx
             )
             
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_b1, col_b2 = st.columns(2)
-            
-            if col_b1.button("🎭 Personificar Usuário Selecionado", use_container_width=True, type="primary"):
-                if escolha != st.session_state.admin_email:
-                    st.session_state.email = escolha
-                    st.session_state.nome = opcoes[escolha].split(' (')[0]
-                    st.session_state.personificando = True
-                    st.success(f"Entrando na visão de: {st.session_state.nome}")
-                    time.sleep(0.6)
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Você selecionou o seu próprio e-mail administrativo.")
-                    
-            if col_b2.button("🛑 Parar Personificação (Voltar)", use_container_width=True):
-                if st.session_state.get('personificando', False):
-                    st.session_state.email = st.session_state.admin_email
-                    st.session_state.nome = st.session_state.get('nome_admin_original', 'Admin')
-                    st.session_state.personificando = False
-                    st.success("Retornado com sucesso para a conta de Administrador.")
-                    time.sleep(0.6)
-                    st.rerun()
-                else:
-                    st.info("Você já está na sua conta de Administrador.")
+            if escolha != st.session_state.email:
+                st.session_state.email = escolha
+                st.session_state.nome = opcoes[escolha].split(' (')[0]
+                st.rerun()
 
 
 # ==========================================
@@ -322,10 +295,16 @@ if not st.session_state.logado:
     pg.run()
     
 else:
+    if not st.session_state.get('is_admin', False):
+        st.session_state.email = st.session_state.get('email_autenticado', st.session_state.email)
+
     # =========================================================
     # INJEÇÃO DINÂMICA DE ALERTA: MODO ADMIN / PERSONIFICAÇÃO
     # =========================================================
-    if st.session_state.get('is_admin', False) and st.session_state.get('personificando', False):
+    is_personificando = st.session_state.get('is_admin', False) and st.session_state.email != st.session_state.get('admin_email', '')
+
+    if is_personificando:
+        # Pinta o menu de vermelho e põe borda vermelha
         st.markdown("""
             <style>
                 [data-testid="stSidebar"] {
@@ -357,8 +336,8 @@ else:
     
     pg.run()
 
-    # RENDERIZA O AVISO DE PERSONIFICAÇÃO NA BARRA LATERAL
-    if st.session_state.get('is_admin', False) and st.session_state.get('personificando', False):
+    # RENDERIZA O AVISO DE FORMA NATIVA (Fica logo acima do botão Sair)
+    if is_personificando:
         st.sidebar.markdown(
             f"""
             <div style='background-color: #ff4444; color: white; padding: 0.8rem; border-radius: 6px; text-align: center; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
