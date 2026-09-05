@@ -36,7 +36,6 @@ st.markdown("""
             padding: 0.8rem 1rem;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            min-height: 97px !important;
         }
         [data-testid="stMetricLabel"] { font-weight: 600 !important; color: gray !important; }
         
