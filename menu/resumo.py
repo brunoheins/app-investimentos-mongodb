@@ -115,7 +115,25 @@ def render():
             help="Valor depositado que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
         )
         col_c3.metric("Patrimônio Real", formata_br(patrimonio_real))
-        col_c4.metric("Evolução", f"{evolucao_total_carteira:+.2f}%".replace('.', ','))
+        #col_c4.metric("Evolução", f"{evolucao_total_carteira:+.2f}%".replace('.', ','))
+
+        # Define a cor e a seta baseada na evolução (Verde/↑ para Positivo, Vermelho/↓ para Negativo)
+        if evolucao_total_carteira >= 0:
+            cor_evo = "#00cc96"
+            seta_evo = "↑"
+        else:
+            cor_evo = "#ef553b"
+            seta_evo = "↓"
+            
+        pct_evo_formatado = f"{evolucao_total_carteira:+.2f}%".replace('.', ',')
+        
+        # Desenha a caixa customizada na coluna 4
+        col_c4.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Evolução</div>
+                <div style="font-size: 1.8rem; color: {cor_evo};">{seta_evo} {pct_evo_formatado}</div>
+            </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("---")
         
