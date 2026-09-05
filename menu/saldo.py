@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import yfinance as yf
+import re
+from datetime import datetime, timedelta
 from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, obter_historico_benchmarks
 
 # ==========================================
@@ -11,6 +13,28 @@ from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, o
 def render():
     st.title("📈 Evolução Real do Patrimônio")
     st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
+
+    # --- CSS: Alinha a Rentabilidade (Delta) na mesma linha do Valor ---
+    st.markdown("""
+        <style>
+            /* Força o Valor e a Porcentagem a ocuparem a mesma linha */
+            div[data-testid="stMetricValue"] {
+                display: inline-block !important;
+            }
+            div[data-testid="stMetricDelta"] {
+                display: inline-flex !important;
+                align-items: center !important;
+                margin-left: 10px !important;
+                vertical-align: middle !important;
+                /* Estilo extra para virar um 'Badge' moderno */
+                padding: 0.15rem 0.5rem !important;
+                border-radius: 6px !important;
+                background-color: rgba(128, 128, 128, 0.08) !important;
+                font-weight: bold !important;
+                font-size: 0.9rem !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     sucesso_carregamento = False
 
