@@ -206,10 +206,29 @@ def render():
 
         # Linha 1: Os Dados da Sua Carteira
         st.markdown("### 💼 Resumo da Carteira")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Depositado", formata_br(live_aportado))
         col2.metric("Patrimônio Real", formata_br(live_atual))
-        col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
+        #col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
+        # Define a cor baseada no lucro (Verde para Positivo, Vermelho para Negativo)
+        cor = "#00cc96" if lucro_rs >= 0 else "#ef553b"
+        pct_formatado = f"{lucro_pct:+.2f}%".replace('.', ',')
+        
+        # Caixa 3: Rentabilidade (R$) colorida
+        col3.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (R$)</div>
+                <div style="font-size: 1.8rem; color: {cor};">{formata_br(lucro_rs)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Caixa 4: Rentabilidade (%) colorida
+        col4.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (%)</div>
+                <div style="font-size: 1.8rem; color: {cor};">{pct_formatado}</div>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Linha 2: Os Dados Teóricos (Benchmarks interativos)
         st.markdown("---")
