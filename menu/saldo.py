@@ -12,35 +12,6 @@ def render():
     st.title("📈 Evolução Real do Patrimônio")
     st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
 
-    # --- CSS DEFINITIVO: Flexbox com Wrap ---
-    st.markdown("""
-        <style>
-            /* A MÁGICA: Transforma a métrica num container Flexbox que permite quebra de linha */
-            [data-testid="stMetric"] {
-                display: flex !important;
-                flex-wrap: wrap !important;
-                align-items: baseline !important;
-            }
-            /* Força APENAS o Título a ocupar 100% do espaço, jogando o resto para a linha de baixo */
-            [data-testid="stMetricLabel"] {
-                width: 100% !important;
-                margin-bottom: 0.2rem !important;
-            }
-            /* O Valor fica com tamanho automático */
-            [data-testid="stMetricValue"] {
-                width: auto !important;
-            }
-            /* O Delta (porcentagem) sobe nativamente para a mesma linha do Valor! */
-            [data-testid="stMetricDelta"] {
-                width: auto !important;
-                margin-left: 0.8rem !important;
-                padding: 0.1rem 0.6rem !important;
-                border-radius: 6px !important;
-                background-color: rgba(128, 128, 128, 0.08) !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
     sucesso_carregamento = False
 
     # ==========================================
