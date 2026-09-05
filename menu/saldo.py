@@ -210,23 +210,29 @@ def render():
         col1.metric("Total Depositado", formata_br(live_aportado))
         col2.metric("Patrimônio Real", formata_br(live_atual))
         #col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
-        # Define a cor baseada no lucro (Verde para Positivo, Vermelho para Negativo)
-        cor = "#00cc96" if lucro_rs >= 0 else "#ef553b"
+        # Define a cor e a seta baseada no lucro (Verde/↑ para Positivo, Vermelho/↓ para Negativo)
+        if lucro_rs >= 0:
+            cor = "#00cc96"
+            seta = "↑"
+        else:
+            cor = "#ef553b"
+            seta = "↓"
+            
         pct_formatado = f"{lucro_pct:+.2f}%".replace('.', ',')
         
-        # Caixa 3: Rentabilidade (R$) colorida
+        # Caixa 3: Rentabilidade (R$) colorida com seta
         col3.markdown(f"""
             <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (R$)</div>
-                <div style="font-size: 1.8rem; color: {cor};">{formata_br(lucro_rs)}</div>
+                <div style="font-size: 1.8rem; color: {cor};">{seta} {formata_br(lucro_rs)}</div>
             </div>
         """, unsafe_allow_html=True)
         
-        # Caixa 4: Rentabilidade (%) colorida
+        # Caixa 4: Rentabilidade (%) colorida com seta
         col4.markdown(f"""
             <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (%)</div>
-                <div style="font-size: 1.8rem; color: {cor};">{pct_formatado}</div>
+                <div style="font-size: 1.8rem; color: {cor};">{seta} {pct_formatado}</div>
             </div>
         """, unsafe_allow_html=True)
         
