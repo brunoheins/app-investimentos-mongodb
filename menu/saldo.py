@@ -207,8 +207,8 @@ def render():
         # Linha 1: Os Dados da Sua Carteira
         st.markdown("### 💼 Resumo da Carteira")
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Depositado", formata_br(live_aportado), delta=".", delta_color="off")
-        col2.metric("Patrimônio Real", formata_br(live_atual), delta=".", delta_color="off")
+        col1.metric("Total Depositado", formata_br(live_aportado), ".")
+        col2.metric("Patrimônio Real", formata_br(live_atual), ".")
         col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
         
         # Linha 2: Os Dados Teóricos (Benchmarks interativos)
