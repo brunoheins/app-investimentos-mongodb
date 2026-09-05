@@ -3,8 +3,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import yfinance as yf
-import re
-from datetime import datetime, timedelta
 from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, obter_historico_benchmarks
 
 # ==========================================
@@ -14,24 +12,31 @@ def render():
     st.title("📈 Evolução Real do Patrimônio")
     st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
 
-    # --- CSS: Alinha a Rentabilidade (Delta) na mesma linha do Valor ---
+    # --- CSS DEFINITIVO: Flexbox com Wrap ---
     st.markdown("""
         <style>
-            /* Força o Valor e a Porcentagem a ocuparem a mesma linha */
-            div[data-testid="stMetricValue"] {
-                display: inline-block !important;
+            /* A MÁGICA: Transforma a métrica num container Flexbox que permite quebra de linha */
+            [data-testid="stMetric"] {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                align-items: baseline !important;
             }
-            div[data-testid="stMetricDelta"] {
-                display: inline-flex !important;
-                align-items: center !important;
-                margin-left: 10px !important;
-                vertical-align: middle !important;
-                /* Estilo extra para virar um 'Badge' moderno */
-                padding: 0.15rem 0.5rem !important;
+            /* Força APENAS o Título a ocupar 100% do espaço, jogando o resto para a linha de baixo */
+            [data-testid="stMetricLabel"] {
+                width: 100% !important;
+                margin-bottom: 0.2rem !important;
+            }
+            /* O Valor fica com tamanho automático */
+            [data-testid="stMetricValue"] {
+                width: auto !important;
+            }
+            /* O Delta (porcentagem) sobe nativamente para a mesma linha do Valor! */
+            [data-testid="stMetricDelta"] {
+                width: auto !important;
+                margin-left: 0.8rem !important;
+                padding: 0.1rem 0.6rem !important;
                 border-radius: 6px !important;
                 background-color: rgba(128, 128, 128, 0.08) !important;
-                font-weight: bold !important;
-                font-size: 0.9rem !important;
             }
         </style>
     """, unsafe_allow_html=True)
