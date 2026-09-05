@@ -100,19 +100,44 @@ def calcular_impostos(email):
     return pd.DataFrame(historico_vendas)
 
 # ==========================================
-# RENDERIZAÇÃO DA PÁGINA COM ABAS
+# RENDERIZAÇÃO DA PÁGINA
 # ==========================================
 def render():
     st.title("🦁 Radar de Imposto de Renda")
     st.markdown("Acompanhe sua margem de isenção mensal, estime DARFs e automatize sua declaração anual.")
     
-    # DIVISÃO EM DUAS ABAS
-    tab_mensal, tab_anual = st.tabs(["🚨 Apuração Mensal (Vendas e DARF)", "🧾 Declaração Anual (Bens e Direitos)"])
+    # ==========================================
+    # NAVEGAÇÃO POR BOTÕES DE ESTADO (TIPO CONFIGURAÇÃO)
+    # ==========================================
+    if 'aba_imposto' not in st.session_state:
+        st.session_state.aba_imposto = "Mensal"
+
+    def mudar_aba_imposto(nova_aba):
+        st.session_state.aba_imposto = nova_aba
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_aba1, c_aba2 = st.columns(2)
     
+    c_aba1.button(
+        "🚨 1. Apuração Mensal (Vendas e DARF)", 
+        width='stretch', 
+        on_click=mudar_aba_imposto, args=("Mensal",),
+        type="primary" if st.session_state.aba_imposto == "Mensal" else "secondary"
+    )
+
+    c_aba2.button(
+        "🧾 2. Declaração Anual (Bens e Direitos)", 
+        width='stretch', 
+        on_click=mudar_aba_imposto, args=("Anual",),
+        type="primary" if st.session_state.aba_imposto == "Anual" else "secondary"
+    )
+    
+    st.markdown("---")
+
     # =========================================================
-    # ABA 1: APURAÇÃO MENSAL E DARF (O SEU CÓDIGO ORIGINAL)
+    # CONTEÚDO 1: APURAÇÃO MENSAL E DARF
     # =========================================================
-    with tab_mensal:
+    if st.session_state.aba_imposto == "Mensal":
         df_vendas = calcular_impostos(st.session_state.email)
         
         if df_vendas.empty:
@@ -244,9 +269,9 @@ def render():
                 )
 
     # =========================================================
-    # ABA 2: DECLARAÇÃO ANUAL (BENS E DIREITOS)
+    # CONTEÚDO 2: DECLARAÇÃO ANUAL (BENS E DIREITOS)
     # =========================================================
-    with tab_anual:
+    elif st.session_state.aba_imposto == "Anual":
         st.markdown("Automatize a sua declaração de **Bens e Direitos**. Os valores aqui refletem o **Custo de Aquisição** histórico das posições fechadas em 31/12 de cada ano-calendário.")
 
         ano_atual_bens = datetime.datetime.now().year
@@ -268,7 +293,6 @@ def render():
                 if df_user_inv.empty:
                     st.info("Sua carteira está vazia ou sem lançamentos.")
                 else:
-                    # Busca dinâmica da coluna de Data e Preço para evitar erros na planilha
                     col_data = next((c for c in df_user_inv.columns if 'data' in str(c).lower()), None)
                     col_preco = next((c for c in df_user_inv.columns if 'prec' in str(c).lower() or 'custo' in str(c).lower()), None)
 
@@ -281,7 +305,6 @@ def render():
                         df_user_inv['PrecoCusto'] = df_user_inv[col_preco].apply(extrair_numero_br)
                         df_user_inv['CustoTotal'] = df_user_inv['Quantidade'] * df_user_inv['PrecoCusto']
 
-                        # Define cortes de tempo exatos no dia 31/12
                         data_limite_base = pd.to_datetime(f"{ano_base}-12-31")
                         data_limite_anterior = pd.to_datetime(f"{ano_anterior}-12-31")
 
