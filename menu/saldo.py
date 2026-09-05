@@ -210,7 +210,7 @@ def render():
         col1.metric("Total Depositado", formata_br(live_aportado))
         col2.metric("Patrimônio Real", formata_br(live_atual))
         col3.metric("Rentabilidade Real", formata_br(lucro_rs))
-        col4.metric("Rentabilidade Real", delta=f"{lucro_pct:+.2f}%".replace('.', ','))
+        col4.metric("Rentabilidade Real", f"{lucro_pct:+.2f}%".replace('.', ','))
         
         # Linha 2: Os Dados Teóricos (Benchmarks interativos)
         st.markdown("---")
