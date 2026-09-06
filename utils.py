@@ -695,7 +695,7 @@ def obter_historico_benchmarks(mes_inicial, mes_final):
     return resultado_dict
 
 # ==============================================================
-# MOTOR DE DIVIDENDOS COM CACHE GLOBAL NO MONGODB (D-0)
+# MOTOR DE DIVIDENDOS COM CACHE GLOBAL NO MONGODB (D-0) OTIMIZADO
 # ==============================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def buscar_historico_dividendos(df_transacoes):
@@ -721,25 +721,38 @@ def buscar_historico_dividendos(df_transacoes):
     agora = datetime.now()
     hoje_zero_hora = agora.replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # --- OTIMIZAÇÃO 1: NORMALIZAÇÃO PRÉVIA DOS TICKERS ---
+    mapa_tickers = {}
     for ativo in ativos:
-        df_ativo_tx = df_transacoes[df_transacoes['Ativo'] == ativo]
-
-        # Normaliza o ticker para a B3
         ticker_yf = ativo
         if "." not in ticker_yf and re.search(r'\d+$', ticker_yf):
             ticker_yf = f"{ticker_yf}.SA"
+        mapa_tickers[ativo] = ticker_yf
 
+    tickers_unicos = list(set(mapa_tickers.values()))
+
+    # --- OTIMIZAÇÃO 2: CONSULTA EM LOTE NO MONGODB (BULK READ) ---
+    try:
+        from utils import db # Certifique-se de que a importação do banco está acessível
+        docs_cache = list(db.dividendos_cache.find({"_id": {"$in": tickers_unicos}}))
+        cache_global = {doc["_id"]: doc for doc in docs_cache}
+    except Exception as e:
+        print(f"Erro ao consultar cache de dividendos em lote: {e}")
+        cache_global = {}
+
+    for ativo in ativos:
+        df_ativo_tx = df_transacoes[df_transacoes['Ativo'] == ativo]
+        ticker_yf = mapa_tickers[ativo]
         divs = pd.Series(dtype=float)
 
         try:
-            # 1. VERIFICA O MONGODB PRIMEIRO (Cache D-0)
-            doc_cache = db.dividendos_cache.find_one({"_id": ticker_yf})
+            # 1. VERIFICA O CACHE EM RAM PRIMEIRO
+            doc_cache = cache_global.get(ticker_yf)
             
-            # Se já foi atualizado hoje, puxa do banco instantaneamente
+            # Se já foi atualizado hoje, puxa da RAM instantaneamente
             if doc_cache and doc_cache.get("ultima_atualizacao", datetime.min) >= hoje_zero_hora:
                 divs_dict = doc_cache.get("dividendos", {})
                 if divs_dict:
-                    # Reconstrói a série temporal do Pandas
                     divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
             else:
                 # 2. SE NÃO TEM OU ESTÁ VELHO, BATE NO YAHOO FINANCE
@@ -748,14 +761,9 @@ def buscar_historico_dividendos(df_transacoes):
                 
                 if not divs_raw.empty:
                     divs_raw.index = divs_raw.index.tz_localize(None)
-                    
-                    # Salva os últimos 2 anos no banco para não pesar, mas garantir histórico
                     divs_salvar = divs_raw[divs_raw.index >= dois_anos_atras]
-                    
-                    # Converte para dicionário amigável para o MongoDB (Data em string)
                     divs_dict = {d.strftime('%Y-%m-%d'): float(v) for d, v in divs_salvar.items()}
                     
-                    # Atualiza o banco (ou cria se não existir)
                     db.dividendos_cache.update_one(
                         {"_id": ticker_yf},
                         {"$set": {"dividendos": divs_dict, "ultima_atualizacao": agora}},
@@ -763,20 +771,17 @@ def buscar_historico_dividendos(df_transacoes):
                     )
                     divs = divs_salvar
                 else:
-                    # Se não distribui dividendos, salva vazio para não tentar de novo hoje
                     db.dividendos_cache.update_one(
                         {"_id": ticker_yf},
                         {"$set": {"dividendos": {}, "ultima_atualizacao": agora}},
                         upsert=True
                     )
 
-            # 3. CRUZA O HISTÓRICO GLOBAL COM A CARTEIRA DO USUÁRIO
+            # 3. CRUZA O HISTÓRICO GLOBAL COM A CARTEIRA
             if not divs.empty:
-                # Filtra apenas os últimos 12 meses para exibir
                 divs = divs[divs.index >= um_ano_atras]
                 
                 for data_div, valor_por_cota in divs.items():
-                    # MÁGICA HISTÓRICA: Soma as cotas compradas ANTES ou NO DIA da Data Com
                     qtd_na_data = df_ativo_tx[df_ativo_tx['Data_Calc'] <= data_div]['Quantidade'].sum()
                     
                     if qtd_na_data > 0:
@@ -789,11 +794,10 @@ def buscar_historico_dividendos(df_transacoes):
                         })
                         
         except Exception as e:
-            # 4. FALLBACK BLINDADO: Se o Yahoo Finance bloquear o IP (Rate Limit) ou cair a internet,
-            # nós resgatamos o histórico do MongoDB ignorando a data de atualização.
+            # 4. FALLBACK BLINDADO OTIMIZADO DA RAM
             print(f"Falha na API para {ativo}, tentando usar cache velho: {e}")
             try:
-                doc_velho = db.dividendos_cache.find_one({"_id": ticker_yf})
+                doc_velho = cache_global.get(ticker_yf) # Não vai mais no banco, pega da RAM!
                 if doc_velho and doc_velho.get("dividendos"):
                     divs_dict = doc_velho.get("dividendos", {})
                     divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
@@ -815,7 +819,8 @@ def buscar_historico_dividendos(df_transacoes):
                 ativos_com_erro.append(ativo)
                 
     return pd.DataFrame(dados_dividendos), ativos_com_erro
-    
+
+
 # ==========================================
 # 8. ADMIN / IMPERSONAÇÃO
 # ==========================================
