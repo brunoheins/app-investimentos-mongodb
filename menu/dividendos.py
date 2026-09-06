@@ -134,7 +134,7 @@ def render():
         if not resumo_mensal.empty:
             fig.update_yaxes(range=[0, resumo_mensal['Total Recebido'].max() * 1.15])
             
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         # --- Tabela de Detalhamento ---
         st.markdown("### 📝 Quais ativos mais te pagaram?")
