@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import plotly.express as px
 from dateutil.relativedelta import relativedelta
 import re
 from utils import ler_planilha, extrair_numero_br, formata_br, buscar_historico_dividendos
@@ -52,6 +53,7 @@ def render():
         st.write("Consolidando métricas e agrupando por mês...")
         # Processar os dados para o Gráfico
         resumo_mensal = df_divs.groupby('Mês_Sort')['Total Recebido'].sum().reset_index()
+        
         # Formata o mês para ficar bonito no gráfico (ex: 08/2023)
         resumo_mensal['Mês'] = pd.to_datetime(resumo_mensal['Mês_Sort']).dt.strftime('%m/%Y')
         
@@ -75,17 +77,64 @@ def render():
     # 2. RENDERIZAÇÃO DA INTERFACE (MÉTRICAS E GRÁFICOS)
     # ==========================================
     if sucesso_carregamento:
-        # --- KPI's (Destaques no topo) ---
+        # --- KPI's PREMIUM (Cards customizados em HTML) ---
         col1, col2, col3 = st.columns(3)
-        col1.metric("💰 Total em 12 Meses", formata_br(total_12m))
-        col2.metric("📅 Média Mensal", formata_br(media_mensal))
-        col3.metric("🚀 Melhor Mês", formata_br(melhor_mes))
+        
+        col1.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">💰 Total em 12 Meses</div>
+                <div style="font-size: 1.8rem; color: #00cc96;">{formata_br(total_12m)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col2.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">📅 Média Mensal</div>
+                <div style="font-size: 1.8rem; color: #33b5e5;">{formata_br(media_mensal)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col3.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">🚀 Melhor Mês</div>
+                <div style="font-size: 1.8rem; color: #ffbf00;">{formata_br(melhor_mes)}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
         st.markdown("---")
         st.subheader("📈 Evolução da Renda Passiva (Últimos 12 Meses)")
 
-        # Gráfico de Barras Nativo do Streamlit
-        st.bar_chart(resumo_mensal.set_index('Mês')['Total Recebido'], color="#00C851")
+        # --- Gráfico Premium Plotly (Substituindo st.bar_chart) ---
+        fig = px.bar(
+            resumo_mensal, 
+            x='Mês', 
+            y='Total Recebido',
+            text='Total Recebido', # Exibe o valor em cima da barra
+            color_discrete_sequence=['#00cc96']
+        )
+        
+        fig.update_traces(
+            texttemplate='R$ %{text:,.2f}', 
+            textposition='outside',
+            hovertemplate="<b>Mês:</b> %{x}<br><b>Recebido:</b> R$ %{y:,.2f}<extra></extra>"
+        )
+        
+        fig.update_layout(
+            height=380,
+            margin=dict(l=0, r=0, t=30, b=0),
+            xaxis_title="",
+            yaxis_title="",
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickformat=",.2f"),
+            plot_bgcolor='rgba(0,0,0,0)', # Fundo transparente
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        # Aumenta o eixo Y para o texto não ser cortado no topo
+        if not resumo_mensal.empty:
+            fig.update_yaxes(range=[0, resumo_mensal['Total Recebido'].max() * 1.15])
+            
+        st.plotly_chart(fig, use_container_width=True)
 
         # --- Tabela de Detalhamento ---
         st.markdown("### 📝 Quais ativos mais te pagaram?")
@@ -98,7 +147,7 @@ def render():
                     "Total 12 Meses / Cota": lambda x: formata_br(x),
                     "Total Recebido": lambda x: formata_br(x)
                 })
-                .bar(subset=['Total Recebido'], color='#00C851', vmin=0),
+                .bar(subset=['Total Recebido'], color='rgba(0, 204, 150, 0.4)', vmin=0),
                 width='stretch', 
                 hide_index=True
             )
