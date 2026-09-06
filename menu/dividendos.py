@@ -81,23 +81,23 @@ def render():
         col1, col2, col3 = st.columns(3)
         
         col1.markdown(f"""
-            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">💰 Total em 12 Meses</div>
                 <div style="font-size: 1.8rem; color: #00cc96;">{formata_br(total_12m)}</div>
             </div>
         """, unsafe_allow_html=True)
         
         col2.markdown(f"""
-            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">📅 Média Mensal</div>
-                <div style="font-size: 1.8rem; color: #33b5e5;">{formata_br(media_mensal)}</div>
+                <div style="font-size: 1.8rem; color: #00cc96;">{formata_br(media_mensal)}</div>
             </div>
         """, unsafe_allow_html=True)
         
         col3.markdown(f"""
-            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); min-height: 115px;">
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">🚀 Melhor Mês</div>
-                <div style="font-size: 1.8rem; color: #ffbf00;">{formata_br(melhor_mes)}</div>
+                <div style="font-size: 1.8rem; color: #00cc96;">{formata_br(melhor_mes)}</div>
             </div>
         """, unsafe_allow_html=True)
 
