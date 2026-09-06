@@ -819,7 +819,7 @@ def buscar_historico_dividendos(df_transacoes):
                 ativos_com_erro.append(ativo)
                 
     return pd.DataFrame(dados_dividendos), ativos_com_erro
-
+    
 
 # ==========================================
 # 8. ADMIN / IMPERSONAÇÃO
