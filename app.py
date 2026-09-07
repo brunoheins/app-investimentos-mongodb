@@ -329,67 +329,48 @@ else:
         st.rerun()
 
     # ==========================================
-    # 🧪 TESTE TEMPORÁRIO DO TESOURO DIRETO
+    # 🧪 TESTE DEFINITIVO DO TESOURO DIRETO
     # ==========================================
-    with st.sidebar.expander("🧪 Testar Tesouro API"):
-        if st.button("Buscar Dados da B3", use_container_width=True):
+    with st.sidebar.expander("🧪 Testar Tesouro Direto"):
+        if st.button("Buscar Títulos com Ano", use_container_width=True):
             import requests
             import io
-            with st.spinner("Baixando arquivo CSV do Governo..."):
+            with st.spinner("Processando títulos oficiais..."):
                 try:
                     url = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
                     
-                    res = requests.get(url, headers=headers, timeout=15)
+                    res = requests.get(url, headers=headers, timeout=25)
                     res.raise_for_status()
                     
-                    # Lê o CSV recebido em memória
-                    df_td = pd.read_csv(io.StringIO(res.text), sep=";", decimal=",")
+                    df = pd.read_csv(io.StringIO(res.text), sep=";", decimal=",")
                     
-                    st.success(f"✅ Conexão perfeita! O arquivo tem {len(df_td)} linhas.")
-                    st.dataframe(df_td.head(5), use_container_width=True)
+                    # 1. Converte as datas
+                    df['Data Base'] = pd.to_datetime(df['Data Base'], dayfirst=True)
+                    df['Data Vencimento'] = pd.to_datetime(df['Data Vencimento'], dayfirst=True)
+                    
+                    # 2. Constrói o Nome Completo Oficial com o Ano
+                    # Ex: 'Tesouro IPCA+' + ' ' + '2035' -> 'Tesouro IPCA+ 2035'
+                    df['Ano'] = df['Data Vencimento'].dt.year.astype(str)
+                    df['Titulo_Completo'] = df['Tipo Titulo'].astype(str).str.strip() + " " + df['Ano']
+                    
+                    # 3. Pega apenas a cotação mais recente de cada título
+                    df_recente = df.sort_values('Data Base').groupby('Titulo_Completo').last().reset_index()
+                    
+                    df_exibicao = df_recente[['Titulo_Completo', 'Data Base', 'PU Resgate Manha', 'PU Base Manha']].rename(columns={
+                        'Titulo_Completo': 'Título',
+                        'Data Base': 'Última Cotação',
+                        'PU Resgate Manha': 'Preço Resgate (R$)',
+                        'PU Base Manha': 'Preço Compra (R$)'
+                    })
+                    
+                    st.success(f"✅ Sucesso! {len(df_exibicao)} títulos ativos normalizados com ano.")
+                    st.dataframe(df_exibicao, use_container_width=True)
+                    
                 except Exception as e:
-                    st.error(f"❌ Erro na requisição: {e}")
+                    st.error(f"❌ Erro ao processar: {e}")
     # ==========================================
-    # ==========================================
-    # 🧪 TESTE TEMPORÁRIO DO TESOURO DIRETO (JSON)
-    # ==========================================
-    with st.sidebar.expander("🧪 Testar Tesouro API (JSON)"):
-        if st.button("Buscar Preços em Tempo Real", use_container_width=True):
-            import requests
-            with st.spinner("Puxando preços oficiais..."):
-                try:
-                    # Endpoint oficial leve usado pelo frontend do Tesouro
-                    url = "https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/treasurybondsinfo.json"
-                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-                    
-                    res = requests.get(url, headers=headers, timeout=10)
-                    res.raise_for_status()
-                    dados_json = res.json()
-                    
-                    # Navegando no JSON para pegar a lista de títulos
-                    lista_titulos = dados_json.get('response', {}).get('TrsrBdTradgList', [])
-                    
-                    titulos_limpos = []
-                    for item in lista_titulos:
-                        ativo = item.get('TrsrBd', {})
-                        nome = ativo.get('nm', '')
-                        preco_resgate = ativo.get('untrRedVal', 0.0) # Preço se você vender hoje
-                        preco_compra = ativo.get('untrInvstmtVal', 0.0) # Preço se você comprar hoje
-                        
-                        titulos_limpos.append({
-                            "Título": nome, 
-                            "Preço Resgate (R$)": preco_resgate,
-                            "Preço Compra (R$)": preco_compra
-                        })
-                    
-                    df_td = pd.DataFrame(titulos_limpos)
-                    
-                    st.success(f"✅ Rápido como um raio! Encontramos {len(df_td)} títulos.")
-                    st.dataframe(df_td, use_container_width=True)
-                except Exception as e:
-                    st.error(f"❌ Erro na requisição: {e}")
-    # ==========================================
+    
     #st.sidebar.markdown("---")
 
     # Definição das páginas do menu
