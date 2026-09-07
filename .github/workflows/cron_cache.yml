@@ -1,0 +1,28 @@
+name: Sincronizador de Dados Financeiros (D-0)
+
+on:
+  schedule:
+    # 12 às 21 UTC equivale a 09h às 18h BRT
+    # Roda de segunda a sexta (1-5) no minuto zero
+    - cron: '0 12-21 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  maestro-etl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: pip install pandas requests pymongo yfinance
+
+      - name: Rodar Script Maestro
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+        run: python scripts/sync_cache.py
