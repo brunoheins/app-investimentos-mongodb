@@ -75,6 +75,9 @@ def render():
             
         dados_usuario['Setor'] = dados_usuario['Ativo'].map(dict_setores).fillna('Não Classificado')
         
+        # CORREÇÃO: Força o setor da Renda Fixa para ser sempre "Renda Fixa"
+        dados_usuario.loc[dados_usuario['Categoria'] == 'Renda Fixa', 'Setor'] = 'Renda Fixa'
+        
         carteira_agrupada = dados_usuario.groupby(['Ativo', 'Categoria', 'Setor']).agg({
             'Quantidade': 'sum',
             'TotalGastoNaOrdem': 'sum',
@@ -115,7 +118,6 @@ def render():
             help="Valor depositado que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
         )
         col_c3.metric("Patrimônio Real", formata_br(patrimonio_real))
-        #col_c4.metric("Evolução", f"{evolucao_total_carteira:+.2f}%".replace('.', ','))
 
         # Define a cor e a seta baseada na evolução (Verde/↑ para Positivo, Vermelho/↓ para Negativo)
         if evolucao_total_carteira >= 0:
