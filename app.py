@@ -329,12 +329,14 @@ else:
         st.rerun()
 
     # ==========================================
-    # 🧪 TESTE DEFINITIVO DO TESOURO DIRETO
+    # 🧪 TESTE DEFINITIVO DO TESOURO DIRETO (CORRIGIDO)
     # ==========================================
     with st.sidebar.expander("🧪 Testar Tesouro Direto"):
         if st.button("Buscar Títulos com Ano", use_container_width=True):
             import requests
             import io
+            import pandas as pd
+            
             with st.spinner("Processando títulos oficiais..."):
                 try:
                     url = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
@@ -357,11 +359,12 @@ else:
                     # 3. Pega apenas a cotação mais recente de cada título
                     df_recente = df.sort_values('Data Base').groupby('Titulo_Completo').last().reset_index()
                     
-                    df_exibicao = df_recente[['Titulo_Completo', 'Data Base', 'PU Resgate Manha', 'PU Base Manha']].rename(columns={
+                    # 4. Mapeamento corrigido conforme os cabeçalhos reais do CSV
+                    df_exibicao = df_recente[['Titulo_Completo', 'Data Base', 'PU Venda Manha', 'PU Compra Manha']].rename(columns={
                         'Titulo_Completo': 'Título',
                         'Data Base': 'Última Cotação',
-                        'PU Resgate Manha': 'Preço Resgate (R$)',
-                        'PU Base Manha': 'Preço Compra (R$)'
+                        'PU Venda Manha': 'Preço Resgate (R$)',
+                        'PU Compra Manha': 'Preço Compra (R$)'
                     })
                     
                     st.success(f"✅ Sucesso! {len(df_exibicao)} títulos ativos normalizados com ano.")
