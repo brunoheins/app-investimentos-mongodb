@@ -327,52 +327,6 @@ else:
     if st.sidebar.button("🚪 Sair do App", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-
-    # ==========================================
-    # 🧪 TESTE DEFINITIVO DO TESOURO DIRETO (CORRIGIDO)
-    # ==========================================
-    with st.sidebar.expander("🧪 Testar Tesouro Direto"):
-        if st.button("Buscar Títulos com Ano", use_container_width=True):
-            import requests
-            import io
-            import pandas as pd
-            
-            with st.spinner("Processando títulos oficiais..."):
-                try:
-                    url = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
-                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-                    
-                    res = requests.get(url, headers=headers, timeout=25)
-                    res.raise_for_status()
-                    
-                    df = pd.read_csv(io.StringIO(res.text), sep=";", decimal=",")
-                    
-                    # 1. Converte as datas
-                    df['Data Base'] = pd.to_datetime(df['Data Base'], dayfirst=True)
-                    df['Data Vencimento'] = pd.to_datetime(df['Data Vencimento'], dayfirst=True)
-                    
-                    # 2. Constrói o Nome Completo Oficial com o Ano
-                    # Ex: 'Tesouro IPCA+' + ' ' + '2035' -> 'Tesouro IPCA+ 2035'
-                    df['Ano'] = df['Data Vencimento'].dt.year.astype(str)
-                    df['Titulo_Completo'] = df['Tipo Titulo'].astype(str).str.strip() + " " + df['Ano']
-                    
-                    # 3. Pega apenas a cotação mais recente de cada título
-                    df_recente = df.sort_values('Data Base').groupby('Titulo_Completo').last().reset_index()
-                    
-                    # 4. Mapeamento corrigido conforme os cabeçalhos reais do CSV
-                    df_exibicao = df_recente[['Titulo_Completo', 'Data Base', 'PU Venda Manha', 'PU Compra Manha']].rename(columns={
-                        'Titulo_Completo': 'Título',
-                        'Data Base': 'Última Cotação',
-                        'PU Venda Manha': 'Preço Resgate (R$)',
-                        'PU Compra Manha': 'Preço Compra (R$)'
-                    })
-                    
-                    st.success(f"✅ Sucesso! {len(df_exibicao)} títulos ativos normalizados com ano.")
-                    st.dataframe(df_exibicao, use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"❌ Erro ao processar: {e}")
-    # ==========================================
     
     #st.sidebar.markdown("---")
 
