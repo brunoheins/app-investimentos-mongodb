@@ -145,7 +145,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
 
     # ==========================================
-    # NOVO: FILTRO TOP-DOWN (CASCATA HIERÁRQUICA ESTRITA)
+    # CASCATA HIERÁRQUICA ESTRITA
     # ==========================================
     df_resumo_macro['Deficit_Perc'] = df_resumo_macro['Alvo (%)'] - df_resumo_macro['Atual (%)']
     df_macro_ordem = df_resumo_macro[df_resumo_macro['Deficit_Perc'] > 0].sort_values(by=['Deficit_Perc', 'Alvo'], ascending=[False, False])
@@ -170,54 +170,62 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             'ValorAlvo': row['ValorAlvo']
         }
 
-    # Processamento em Cascata
-    for idx_cat, row_cat in df_macro_ordem.iterrows():
-        categoria = row_cat['Categoria']
-        falta_macro_rs = row_cat['Alvo'] - row_cat['Atual']
-        
-        if aporte_restante <= 0.01: break
-        
-        # O limite agora é rígido. A categoria só recebe até bater a meta exata dela.
-        budget_cat = min(aporte_restante, falta_macro_rs)
-        if budget_cat <= 0: continue
-
-        df_ativos_cat = df_disp[(df_disp['Categoria'] == categoria) & (df_disp['Falta_Comprar'] > 0)].copy()
-        if df_ativos_cat.empty: continue
-
-        if not dividir:
-            # ESTRATÉGIA: APORTE INTEGRAL
-            df_ativos_cat['Dist_Relativa'] = df_ativos_cat['Falta_Comprar'] / df_ativos_cat['ValorAlvo']
-            df_ativos_cat = df_ativos_cat.sort_values(by=['Dist_Relativa', 'Falta_Comprar'], ascending=[False, False])
+    # ==========================================
+    # LÓGICA DIFERENCIADA: DIVIDIR vs INTEGRAL
+    # ==========================================
+    if not dividir:
+        # ----------------------------------------------------
+        # APORTE INTEGRAL: Joga todo o dinheiro em UM ÚNICO ATIVO
+        # ----------------------------------------------------
+        # Encontra a categoria com maior déficit
+        if not df_macro_ordem.empty:
+            melhor_cat = df_macro_ordem.iloc[0]['Categoria']
+            df_ativos_cat = df_disp[(df_disp['Categoria'] == melhor_cat) & (df_disp['Falta_Comprar'] > 0)].copy()
             
-            for _, row_atv in df_ativos_cat.iterrows():
-                if budget_cat <= 0: break
-                ativo = row_atv['Ativo']
+            if df_ativos_cat.empty:
+                df_ativos_cat = df_disp[df_disp['Falta_Comprar'] > 0].copy()
+                
+            if not df_ativos_cat.empty:
+                df_ativos_cat['Dist_Relativa'] = df_ativos_cat['Falta_Comprar'] / df_ativos_cat['ValorAlvo']
+                df_ativos_cat = df_ativos_cat.sort_values(by=['Dist_Relativa', 'Falta_Comprar'], ascending=[False, False])
+                
+                row_escolhida = df_ativos_cat.iloc[0]
+                ativo = row_escolhida['Ativo']
                 d = compras_dict[ativo]
                 preco = d['PrecoRef']
                 
-                aloc_asset = min(budget_cat, d['Falta_Comprar'])
-                
                 if d['Is_RV'] and d['Is_BR']:
-                    if preco > 0 and aloc_asset >= preco:
-                        qtd = int(aloc_asset / preco)
+                    if preco > 0 and aporte_restante >= preco:
+                        qtd = int(aporte_restante / preco)
                         gasto = qtd * preco
                     else:
                         qtd, gasto = 0, 0
                 elif d['Is_RV'] and not d['Is_BR']:
-                    qtd = aloc_asset / preco if preco > 0 else 0
-                    gasto = aloc_asset
+                    qtd = aporte_restante / preco if preco > 0 else 0
+                    gasto = aporte_restante
                 else:
                     qtd = 0
-                    gasto = aloc_asset
+                    gasto = aporte_restante
                     
                 d['Valor'] += gasto
                 d['Qtd'] += qtd
-                d['Falta_Comprar'] -= gasto
-                budget_cat -= gasto
                 aporte_restante -= gasto
+    else:
+        # ----------------------------------------------------
+        # DIVIDIR PELO OBJETIVO: Rateio em Cascata Macro ➔ Micro
+        # ----------------------------------------------------
+        for idx_cat, row_cat in df_macro_ordem.iterrows():
+            categoria = row_cat['Categoria']
+            falta_macro_rs = row_cat['Alvo'] - row_cat['Atual']
+            
+            if aporte_restante <= 0.01: break
+            
+            budget_cat = min(aporte_restante, falta_macro_rs)
+            if budget_cat <= 0: continue
 
-        else:
-            # ESTRATÉGIA: DIVIDIR PELO OBJETIVO
+            df_ativos_cat = df_disp[(df_disp['Categoria'] == categoria) & (df_disp['Falta_Comprar'] > 0)].copy()
+            if df_ativos_cat.empty: continue
+
             zerados = df_ativos_cat[df_ativos_cat['TotalAtual_Original'] == 0].sort_values(by='PesoGlobal', ascending=False)
             for _, row_atv in zerados.iterrows():
                 if budget_cat <= 0: break
@@ -239,8 +247,8 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                         d['Valor'] += gasto
                         d['Qtd'] += qtd
                         d['Falta_Comprar'] -= gasto
-                        budget_cat -= gasto
-                        aporte_restante -= gasto
+                        budget_cat -= preco
+                        aporte_restante -= preco
             
             df_ativos_cat['Falta_Comprar_Atual'] = df_ativos_cat['Ativo'].apply(lambda x: compras_dict[x]['Falta_Comprar'])
             df_ativos_cat = df_ativos_cat[df_ativos_cat['Falta_Comprar_Atual'] > 0]
@@ -276,40 +284,43 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                     budget_cat -= gasto
                     aporte_restante -= gasto
 
-    # ==========================================
-    # OTIMIZADOR DE TROCOS GLOBAIS
-    # ==========================================
-    def get_cat_priority(cat):
-        val = df_resumo_macro.loc[df_resumo_macro['Categoria'] == cat, 'Deficit_Perc'].values
-        return val[0] if len(val) > 0 else -999
+        # ==========================================
+        # OTIMIZADOR DE TROCOS GLOBAIS (Apenas para modo Dividir)
+        # ==========================================
+        def get_cat_priority(cat):
+            val = df_resumo_macro.loc[df_resumo_macro['Categoria'] == cat, 'Deficit_Perc'].values
+            return val[0] if len(val) > 0 else -999
 
-    comprou_no_loop = True
-    while aporte_restante > 0.01 and comprou_no_loop:
-        comprou_no_loop = False
-        ativos_ordenados = sorted(
-            compras_dict.values(), 
-            key=lambda x: (
-                get_cat_priority(x['Categoria']), 
-                x['Falta_Comprar'] / x['ValorAlvo'] if x['ValorAlvo'] > 0 else 0
-            ), 
-            reverse=True
-        )
-        
-        for d in ativos_ordenados:
-            if d['Falta_Comprar'] <= 0: continue
-            preco = d['PrecoRef']
-            if d['Is_RV'] and d['Is_BR'] and preco > 0 and aporte_restante >= preco:
-                d['Valor'] += preco
-                d['Qtd'] += 1
-                d['Falta_Comprar'] -= preco
-                aporte_restante -= preco
-                comprou_no_loop = True
-                break 
+        comprou_no_loop = True
+        while aporte_restante > 0.01 and comprou_no_loop:
+            comprou_no_loop = False
+            ativos_ordenados = sorted(
+                compras_dict.values(), 
+                key=lambda x: (
+                    get_cat_priority(x['Categoria']), 
+                    x['Falta_Comprar'] / x['ValorAlvo'] if x['ValorAlvo'] > 0 else 0
+                ), 
+                reverse=True
+            )
+            
+            for d in ativos_ordenados:
+                if d['Falta_Comprar'] <= 0: continue
+                preco = d['PrecoRef']
+                if d['Is_RV'] and d['Is_BR'] and preco > 0 and aporte_restante >= preco:
+                    d['Valor'] += preco
+                    d['Qtd'] += 1
+                    d['Falta_Comprar'] -= preco
+                    aporte_restante -= preco
+                    comprou_no_loop = True
+                    break 
 
     # --- 5. MONTAGEM FINAL DO EXTRATO DE COMPRAS ---
     ativos_comprados = [d for d in compras_dict.values() if d['Valor'] > 0]
     
-    # ORDENAÇÃO VISUAL CORRETA: Respeita a Macro e a Micro.
+    def get_cat_priority(cat):
+        val = df_resumo_macro.loc[df_resumo_macro['Categoria'] == cat, 'Deficit_Perc'].values
+        return val[0] if len(val) > 0 else -999
+
     ativos_comprados.sort(
         key=lambda x: (
             get_cat_priority(x['Categoria']), 
