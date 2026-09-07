@@ -160,7 +160,7 @@ def render():
             for cat in carteira_agrupada['Categoria'].unique():
                 
                 # Mantém o título neutro para evitar gatilhos emocionais
-                with st.expander(f"📁 {cat}", expanded=False): 
+                with st.expander(f"📁  {cat}", expanded=False): 
                     df_exibicao = carteira_agrupada[carteira_agrupada['Categoria'] == cat][['Ativo', 'Setor', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'TotalAtual', 'EvolucaoPct']].copy()
                     
                     df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.').str.rstrip('0').str.rstrip(',')
