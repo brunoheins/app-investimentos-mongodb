@@ -20,7 +20,15 @@ def init_connection():
     try:
         uri = st.secrets["MONGO_URI"]
         client = MongoClient(uri, server_api=ServerApi('1'), tlsCAFile=certifi.where())
-        return client['app_v2']
+        db = client['app_v2']
+        
+        # --- GARANTE OS ÍNDICES AUTOMATICAMENTE ---
+        db.transacoes.create_index([("email", 1), ("tipo", 1)])
+        db.cotacoes_cache.create_index([("ultima_atualizacao", 1)])
+        db.dividendos_cache.create_index([("ultima_atualizacao", 1)])
+        # ------------------------------------------
+        
+        return db
     except Exception as e:
         st.error(f"Erro ao conectar com o MongoDB: {e}")
         st.stop()
