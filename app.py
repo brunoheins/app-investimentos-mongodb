@@ -328,6 +328,30 @@ else:
         st.session_state.clear()
         st.rerun()
 
+    # ==========================================
+    # 🧪 TESTE TEMPORÁRIO DO TESOURO DIRETO
+    # ==========================================
+    with st.sidebar.expander("🧪 Testar Tesouro API"):
+        if st.button("Buscar Dados da B3", use_container_width=True):
+            import requests
+            import io
+            with st.spinner("Baixando arquivo CSV do Governo..."):
+                try:
+                    url = "https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/precotaxatesourodireto.csv"
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    
+                    res = requests.get(url, headers=headers, timeout=15)
+                    res.raise_for_status()
+                    
+                    # Lê o CSV recebido em memória
+                    df_td = pd.read_csv(io.StringIO(res.text), sep=";", decimal=",")
+                    
+                    st.success(f"✅ Conexão perfeita! O arquivo tem {len(df_td)} linhas.")
+                    st.dataframe(df_td.head(5), use_container_width=True)
+                except Exception as e:
+                    st.error(f"❌ Erro na requisição: {e}")
+    # ==========================================
+    
     #st.sidebar.markdown("---")
 
     # Definição das páginas do menu
