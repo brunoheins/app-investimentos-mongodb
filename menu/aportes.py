@@ -144,6 +144,19 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     )
     df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
 
+    # ==========================================
+    # NOVO: FILTRO TOP-DOWN (BLOQUEIO MACRO)
+    # ==========================================
+    # Descobre quais categorias já passaram do alvo e devem ser congeladas
+    df_resumo_macro['Falta_Macro_R$'] = df_resumo_macro['Alvo'] - df_resumo_macro['Atual']
+    categorias_bloqueadas = df_resumo_macro[df_resumo_macro['Falta_Macro_R$'] <= 0]['Categoria'].tolist()
+
+    # Zera a necessidade de compra de qualquer ativo que pertença a uma categoria bloqueada
+    df_calc['Falta_Comprar'] = df_calc.apply(
+        lambda r: 0 if r['Categoria'] in categorias_bloqueadas else max(0, r['Falta_Comprar']),
+        axis=1
+    )
+
     # --- 4. ALOCAÇÃO INTELIGENTE BLINDADA ---
     compras_dict = {}
     aporte_restante = valor_aporte
@@ -169,7 +182,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         df_disp['Distancia_Relativa'] = df_disp.apply(lambda r: r['Falta_Comprar'] / r['ValorAlvo'] if r['ValorAlvo'] > 0 else 0, axis=1)
         df_disp = df_disp.sort_values(by=['Distancia_Relativa', 'Falta_Comprar'], ascending=[False, False])
         
-        if not df_disp.empty:
+        if not df_disp.empty and df_disp.iloc[0]['Falta_Comprar'] > 0:
             ativo = df_disp.iloc[0]['Ativo']
             d = compras_dict[ativo]
             preco = d['PrecoRef']
@@ -272,31 +285,8 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
                     aporte_restante -= gasto
         
         else:
-            total_peso = df_disp['PesoGlobal'].sum()
-            for idx, row in df_disp.iterrows():
-                ativo = row['Ativo']
-                d = compras_dict[ativo]
-                preco = d['PrecoRef']
-                fator = row['PesoGlobal'] / total_peso if total_peso > 0 else 1/len(df_disp)
-                alocacao_teorica = valor_aporte * fator
-                
-                if d['Is_RV'] and d['Is_BR']:
-                    if preco > 0 and alocacao_teorica >= preco:
-                        qtd = int(alocacao_teorica / preco)
-                        gasto = qtd * preco
-                    else:
-                        qtd, gasto = 0, 0
-                elif d['Is_RV'] and not d['Is_BR']:
-                    qtd = alocacao_teorica / preco if preco > 0 else 0
-                    gasto = alocacao_teorica
-                else:
-                    qtd = 0
-                    gasto = alocacao_teorica
-                    
-                d['Valor'] += gasto
-                d['Qtd'] += qtd
-                d['Falta_Comprar'] -= gasto
-                aporte_restante -= gasto
+            # Caso raríssimo: Todos os ativos estão Acima da Meta ou travados
+            pass
 
         # ==========================================
         # PASSO 3: OTIMIZADOR DE TROCOS
@@ -311,6 +301,9 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
             )
             
             for d in ativos_ordenados:
+                # Otimizador de troco também respeita as categorias bloqueadas (Falta_Comprar era 0)
+                if d['Falta_Comprar'] <= 0: continue
+                
                 preco = d['PrecoRef']
                 if d['Is_RV'] and d['Is_BR'] and preco > 0 and aporte_restante >= preco:
                     d['Valor'] += preco
