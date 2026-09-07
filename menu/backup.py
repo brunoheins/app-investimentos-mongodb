@@ -140,7 +140,7 @@ def render():
                                     
                                     # 2º PASSO: Blindagem dinâmica de Dados (Não depende do nome exato)
                                     if 'Data' in df_novo.columns:
-                                        df_novo['Data'] = pd.to_datetime(df_novo['Data'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
+                                        df_novo['Data'] = pd.to_datetime(df_novo['Data'], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y').fillna('')
                                         
                                     for col in df_novo.columns:
                                         col_l = col.lower()
