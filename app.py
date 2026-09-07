@@ -351,7 +351,45 @@ else:
                 except Exception as e:
                     st.error(f"❌ Erro na requisição: {e}")
     # ==========================================
-    
+    # ==========================================
+    # 🧪 TESTE TEMPORÁRIO DO TESOURO DIRETO (JSON)
+    # ==========================================
+    with st.sidebar.expander("🧪 Testar Tesouro API (JSON)"):
+        if st.button("Buscar Preços em Tempo Real", use_container_width=True):
+            import requests
+            with st.spinner("Puxando preços oficiais..."):
+                try:
+                    # Endpoint oficial leve usado pelo frontend do Tesouro
+                    url = "https://www.tesourodireto.com.br/json/br/com/b3/tesourodireto/service/api/treasurybondsinfo.json"
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    
+                    res = requests.get(url, headers=headers, timeout=10)
+                    res.raise_for_status()
+                    dados_json = res.json()
+                    
+                    # Navegando no JSON para pegar a lista de títulos
+                    lista_titulos = dados_json.get('response', {}).get('TrsrBdTradgList', [])
+                    
+                    titulos_limpos = []
+                    for item in lista_titulos:
+                        ativo = item.get('TrsrBd', {})
+                        nome = ativo.get('nm', '')
+                        preco_resgate = ativo.get('untrRedVal', 0.0) # Preço se você vender hoje
+                        preco_compra = ativo.get('untrInvstmtVal', 0.0) # Preço se você comprar hoje
+                        
+                        titulos_limpos.append({
+                            "Título": nome, 
+                            "Preço Resgate (R$)": preco_resgate,
+                            "Preço Compra (R$)": preco_compra
+                        })
+                    
+                    df_td = pd.DataFrame(titulos_limpos)
+                    
+                    st.success(f"✅ Rápido como um raio! Encontramos {len(df_td)} títulos.")
+                    st.dataframe(df_td, use_container_width=True)
+                except Exception as e:
+                    st.error(f"❌ Erro na requisição: {e}")
+    # ==========================================
     #st.sidebar.markdown("---")
 
     # Definição das páginas do menu
