@@ -1,62 +1,25 @@
-# 📈 App Investimentos v2.0
+# 🚀 Conheça o **App Investimentos** 🚀 <br>Sua Gestão Patrimonial Inteligente e Automatizada
 
-Um aplicativo completo para gestão de portfólio, acompanhamento de rentabilidade real e rebalanceamento inteligente de carteira. Desenvolvido em **Python** com **Streamlit**, utilizando **Google Sheets** como banco de dados dinâmico.
+Cansado de planilhas complexas e de perder tempo atualizando cotações na unha? O **App Investimentos** é a plataforma definitiva para o investidor moderno que busca autonomia, eficiência e decisões baseadas em engenharia financeira de ponta.
 
-## 🌟 Principais Funcionalidades
-
-### 🔐 Sistema de Autenticação e Segurança (`app.py`)
-O sistema possui suporte a múltiplos usuários com isolamento de dados.
-* **Login Seguro:** Acesso restrito via E-mail e Senha.
-* **Gestão de Acesso:** Novos cadastros entram com status "Pendente" e requerem aprovação do administrador para visualizar dados.
-* **Recuperação de Senha:** Sistema automatizado de envio de token de 6 dígitos por e-mail para redefinição de senha segura.
-
-### 💼 Visão Geral e Dashboards
-* **Resumo da Aplicação (`resumo.py`):** 
-  * Consolidação do **Total Investido** (soma real de depósitos) versus **Valor Atual** (marcação a mercado).
-  * Cálculo dinâmico da rentabilidade global e evolução percentual.
-  * Gráfico de Distribuição interativo (Pizza) com os pesos reais de Ações, FIIs, Renda Fixa, etc.
-  * *Fallback Inteligente:* Integração com cotações ao vivo. Se um ativo não possui cotação online (ex: CDBs), o sistema protege o patrimônio utilizando o preço de custo.
-* **Evolução do Saldo (`saldo.py`):** 
-  * Gráfico de linha do tempo cruzando o **Dinheiro Aportado** (bolso) e o **Valor de Mercado** acumulados mês a mês.
-  * Motor de auditoria temporal: impede projeções distorcidas tratando datas futuras e garantindo o fechamento preciso no mês atual ("Hoje").
-
-### 🎯 Operacional e Rebalanceamento
-* **Guia de Aportes Inteligente (`aportes.py`):**
-  * O "cérebro" do sistema. O usuário informa o valor do aporte e em quantas compras deseja dividir.
-  * O algoritmo cruza o patrimônio atual, as cotações ao vivo e as metas cadastradas pelo usuário.
-  * Gera uma lista de **Ordens de Compra Sugeridas**, priorizando as categorias e ativos mais defasados em relação à estratégia, calculando automaticamente a quantidade exata de cotas a comprar.
-* **Central de Lançamentos (`lancamentos.py`):**
-  * Interface para registrar entradas de **Dinheiro Novo** (Depósitos/Aportes na corretora).
-  * Interface para registrar **Ordens de Compra**, atrelando o ativo à sua respectiva categoria, quantidade e preço pago.
-* **Configuração da Carteira (`configuracao.py`):**
-  * Definição da estratégia pessoal. Permite configurar o peso ideal (%) de Renda Variável vs Renda Fixa, exposição Brasil vs Exterior, e o peso individual de cada ativo na carteira alvo.
+Combinando automação em nuvem, segurança de nível institucional e algoritmos avançados de rebalanceamento, o sistema coloca o poder de um *family office* nas suas mãos.
 
 ---
 
-## 🏗️ Estrutura Técnica e Módulos
+## 🌟 Principais Recursos e Diferenciais
 
-O projeto adota uma arquitetura modular baseada no roteamento nativo (`st.navigation`) do Streamlit:
+* **🤖 Sincronização Automática (Maestro D-0):** Esqueça o trabalho manual. Um robô integrado nos bastidores atualiza diariamente todas as cotações de Ações, FIIs, Stocks, REITs, ETFs e as taxas do Tesouro Direto de forma totalmente automatizada. Sua carteira sempre fresca e em tempo real.
+* **🎯 Guia de Aportes com Cascata Hierárquica (Top-Down):** O grande coração do app. Esqueça o achismo na hora de investir: o motor calcula o termômetro da sua carteira e aplica uma lógica em cascata (Macro ➔ Micro). Ele identifica quais categorias estão abaixo da meta e direciona seus recursos cirurgicamente para o ativo mais defasado. Você ainda pode escolher entre as estratégias de **Dividir pelo Objetivo** ou **Aporte Integral**.
+* **📊 Resumo Geral e Patrimônio Real:** Acompanhe em um só painel o seu Total Depositado, o Aporte Pendente (caixa ainda não alocado), o Patrimônio Real consolidado e a evolução percentual da carteira, tudo apoiado por gráficos de distribuição limpos e intuitivos.
+* **🍕 Raio-X de Exposição Setorial:** Monitore para onde o seu capital de Renda Variável está indo na economia real (como Financeiro, Logística, Saúde, Utilidade Pública, entre outros), evitando a concentração de riscos indesejados.
+* **💰 Dashboard de Dividendos:** Tenha total visibilidade dos seus proventos recebidos e do fluxo de renda passiva gerada pelos seus ativos ao longo do tempo.
+* **⚖️ Radar de Imposto:** Ferramenta dedicada para auxiliar no monitoramento e controle das suas obrigações fiscais no mercado financeiro.
+* **🔒 Segurança e Backup Flexível (Excel):** Seus dados protegidos em um banco de dados em nuvem (MongoDB Atlas) com criptografia e índices de alta performance. Além disso, o sistema conta com uma aba dedicada de **Importação/Exportação**, permitindo que você faça o backup completo ou a restauração dos seus dados via planilha `.xlsx` a qualquer momento (com opções de substituição total ou mesclagem inteligente).
 
-* `app.py`: Ponto de entrada, roteamento e autenticação.
-* `utils.py`: Motor de utilidades. Contém funções vitais como conexão com API do Google (gspread), motor de cotações em tempo real, formatação de padrão numérico brasileiro e envio de e-mails via SMTP.
-* `menu/`: Pacote contendo as regras de visualização e interface de cada tela da aplicação.
-* `.streamlit/config.toml`: Configurações de tema e layout do framework.
+---
 
-## 🚀 Tecnologias Utilizadas
+## 💼 Transforme sua Forma de Investir
 
-* **Python 3.x**
-* **Streamlit:** Framework de interface e roteamento.
-* **Pandas:** Processamento de DataFrames e regras de negócio.
-* **Plotly:** Geração dos gráficos interativos de evolução e distribuição.
-* **Gspread / Oauth2client:** Comunicação segura de leitura e escrita com o banco de dados (Google Sheets).
+Seja você um investidor focado em dividendos, construção de patrimônio a longo prazo ou independência financeira, o **App Investimentos** elimina o atrito operacional e garante que os seus aportes estejam sempre alinhados milimetricamente aos seus objetivos macroeconômicos.
 
-## 🛠️ Como executar localmente
-
-1. Clone o repositório.
-2. Instale as dependências executando: 
-   ```bash
-   pip install -r requirements.txt
-3. Configure os segredos do Google (Service Account) e provedor de E-mail nos Secrets do Streamlit (.streamlit/secrets.toml).
-4. Inicie o servidor local do Streamlit:
-    ```bash
-    streamlit run app.py
+**Assuma o controle total do seu futuro financeiro com inteligência, automação e precisão cirúrgica.**
