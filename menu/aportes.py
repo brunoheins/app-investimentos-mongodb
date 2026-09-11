@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from utils import ler_planilha, formata_br, obter_cotacoes, extrair_numero_br
+from utils import ler_planilha, formata_br, obter_cotacoes, extrair_numero_br, calcular_termometro_macro_usuario
 
 # ==========================================
 # ARMADURA NUMÉRICA UNIVERSAL
@@ -32,20 +32,21 @@ def normalizar_categoria(cat_str):
     return str(cat_str).strip()
 
 def motor_de_aportes(email, valor_aporte, dividir=True):
+    email_lower = str(email).strip().lower()
     df_conf = ler_planilha("Configuracao")
     df_ativos_conf = ler_planilha("Ativos_Config")
     df_invest = ler_planilha("Investimentos")
 
     if not df_conf.empty: df_conf.columns = [str(c).strip() for c in df_conf.columns]
 
-    if df_conf.empty or email not in df_conf['Email'].astype(str).str.strip().str.lower().values:
+    if df_conf.empty or email_lower not in df_conf['Email'].astype(str).str.strip().str.lower().values:
         return [], valor_aporte, None, "Metas de Alocação Macro não definidas na Configuração."
     
     if df_ativos_conf.empty:
         df_ativos_conf = pd.DataFrame(columns=['Email', 'Categoria', 'Ativo', 'Peso'])
 
     df_conf['Email'] = df_conf['Email'].astype(str).str.strip().str.lower()
-    user_conf = df_conf[df_conf['Email'] == email].iloc[0].to_dict()
+    user_conf = df_conf[df_conf['Email'] == email_lower].iloc[0].to_dict()
 
     peso_rv = extrair_numero_br(user_conf.get('RV', 50)) / 100.0
     peso_br = extrair_numero_br(user_conf.get('RV_Brasil', 50)) / 100.0
@@ -61,9 +62,9 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     }
 
     df_ativos_conf['Email'] = df_ativos_conf['Email'].astype(str).str.strip().str.lower()
-    df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email].copy()
+    df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email_lower].copy()
     
-    cotacoes_dict = obter_cotacoes(st.session_state.email)
+    cotacoes_dict = obter_cotacoes(email_lower)
 
     # --- 1. LER ATIVOS ALVOS OFICIAIS ---
     ativos_alvos = []
@@ -93,7 +94,7 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     
     if not df_invest.empty and 'Email' in df_invest.columns:
         df_invest['Email'] = df_invest['Email'].astype(str).str.strip().str.lower()
-        df_user_invest = df_invest[df_invest['Email'] == email].copy()
+        df_user_invest = df_invest[df_invest['Email'] == email_lower].copy()
         
         if not df_user_invest.empty:
             df_user_invest['Ativo'] = df_user_invest['Ativo'].astype(str).str.strip().str.upper()
@@ -129,20 +130,17 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
     df_calc['Falta_Comprar'] = df_calc['ValorAlvo'] - df_calc['TotalAtual']
     df_calc['TotalAtual_Original'] = df_calc['TotalAtual'].copy()
 
-    # --- PREPARAÇÃO DO TERMÔMETRO VISUAL ---
-    df_resumo_macro = df_calc.groupby('Categoria').agg(
-        Alvo=('ValorAlvo', 'sum'),
-        Atual=('TotalAtual', 'sum')
-    ).reset_index()
-    
-    df_resumo_macro['Alvo (%)'] = (df_resumo_macro['Alvo'] / total_futuro * 100).round(1) if total_futuro > 0 else 0
-    df_resumo_macro['Atual (%)'] = (df_resumo_macro['Atual'] / total_atual * 100).round(1) if total_atual > 0 else 0
-    df_resumo_macro['Status'] = df_resumo_macro.apply(
-        lambda x: "🟢 Na Meta" if abs(x['Alvo (%)'] - x['Atual (%)']) <= 2 
-        else ("🔴 Abaixo da Meta" if x['Atual (%)'] < x['Alvo (%)'] else "🟡 Acima da Meta"), 
-        axis=1
-    )
-    df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
+    # --- UTILIZA O TERMÔMETRO CENTRALIZADO DO UTILS ---
+    df_resumo_macro, _, erro_macro = calcular_termometro_macro_usuario(email_lower)
+    if erro_macro:
+        return [], valor_aporte, None, erro_macro
+
+    # Recalcula o Alvo(%) com base no total_futuro para o motor de aportes funcionar perfeitamente
+    df_calc_macro = df_calc.groupby('Categoria')['ValorAlvo'].sum().reset_index()
+    df_resumo_macro = pd.merge(df_resumo_macro[['Categoria', 'Atual (%)', 'Status']], df_calc_macro, on='Categoria')
+    df_resumo_macro['Alvo (%)'] = (df_resumo_macro['ValorAlvo'] / total_futuro * 100).round(1) if total_futuro > 0 else 0
+    df_resumo_macro['Alvo'] = df_resumo_macro['ValorAlvo']
+    df_resumo_macro['Atual'] = df_resumo_macro['Alvo'] - df_resumo_macro['ValorAlvo'] # Ajuste para compatibilidade
 
     # ==========================================
     # CASCATA HIERÁRQUICA ESTRITA
@@ -177,7 +175,6 @@ def motor_de_aportes(email, valor_aporte, dividir=True):
         # ----------------------------------------------------
         # APORTE INTEGRAL: Joga todo o dinheiro em UM ÚNICO ATIVO
         # ----------------------------------------------------
-        # Encontra a categoria com maior déficit
         if not df_macro_ordem.empty:
             melhor_cat = df_macro_ordem.iloc[0]['Categoria']
             df_ativos_cat = df_disp[(df_disp['Categoria'] == melhor_cat) & (df_disp['Falta_Comprar'] > 0)].copy()
