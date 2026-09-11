@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br
+from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, calcular_termometro_macro_usuario
 
 def render():
     st.title("📊 Resumo Geral da Carteira")
@@ -137,6 +137,29 @@ def render():
             </div>
         """, unsafe_allow_html=True)
         
+        st.markdown("---")
+
+        # ==========================================
+        # 3. TERMÔMETRO DA CARTEIRA (NOVO RECURSO CENTRALIZADO)
+        # ==========================================
+        st.subheader("🎯 Termômetro da Carteira (Alvo vs. Atual)")
+        df_macro, _, erro_macro = calcular_termometro_macro_usuario(st.session_state.email)
+        
+        if not erro_macro and df_macro is not None and not df_macro.empty:
+            st.dataframe(
+                df_macro[['Categoria', 'Alvo (%)', 'Atual (%)', 'Status']].style.format({
+                    'Alvo (%)': "{:.2f}%",
+                    'Atual (%)': "{:.2f}%"
+                }).map(
+                    lambda x: 'color: #00C851' if '🟢' in str(x) else ('color: #ff4444' if '🔴' in str(x) else 'color: #ffbb33'), 
+                    subset=['Status']
+                ),
+                width='stretch', 
+                hide_index=True
+            )
+        else:
+            st.info("Configure suas metas macro na aba de Configurações para visualizar o termômetro.")
+
         st.markdown("---")
         
         col_grafico, col_tabelas = st.columns([1, 1.5], gap="large")
