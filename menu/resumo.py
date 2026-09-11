@@ -110,44 +110,12 @@ def render():
         
         evolucao_total_carteira = ((patrimonio_real - total_depositado) / total_depositado if total_depositado > 0 else 0) * 100
         
-        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
-        col_c1.metric("Total Depositado", formata_br(total_depositado))
-        col_c2.metric(
-            "Aporte Pendente", 
-            formata_br(saldo_pendente),
-            help="Valor depositado que ainda não foi alocado em compras. Este valor não soma dividendos recebidos."
-        )
-        col_c3.metric("Patrimônio Real", formata_br(patrimonio_real))
-
-        # Define a cor e a seta baseada na evolução (Verde/↑ para Positivo, Vermelho/↓ para Negativo)
-        if evolucao_total_carteira >= 0:
-            cor_evo = "#00cc96"
-            seta_evo = "↑"
-        else:
-            cor_evo = "#ef553b"
-            seta_evo = "↓"
-            
-        pct_evo_formatado = f"{evolucao_total_carteira:+.2f}%".replace('.', ',')
-        
-        # Desenha a caixa customizada na coluna 4
-        col_c4.markdown(f"""
-            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Evolução</div>
-                <div style="font-size: 1.8rem; color: {cor_evo};">{seta_evo} {pct_evo_formatado}</div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-
         # ==========================================
-        # 3. LAYOUT EM DUAS COLUNAS PRINCIPAIS:
-        # Coluna Esquerda: Termômetro + Gráfico de Pizza
-        # Coluna Direita: Detalhamento por Ativos
+        # 3. PRIMEIRA DIVISÃO: 2 Colunas (Termômetro vs 4 Quadros de KPIs)
         # ==========================================
-        col_esquerda, col_direita = st.columns([1, 1.3], gap="large")
+        col_termometro, col_kpis = st.columns([1.3, 1], gap="large")
         
-        with col_esquerda:
-            # --- TERMÔMETRO MACRO CONDENSADO ---
+        with col_termometro:
             st.subheader("🎯 Termômetro Macro")
             df_macro, _, erro_macro = calcular_termometro_macro_usuario(st.session_state.email)
             
@@ -166,9 +134,45 @@ def render():
             else:
                 st.info("Configure suas metas macro nas Configurações.")
 
-            st.markdown("<br>", unsafe_allow_html=True)
+        with col_kpis:
+            st.subheader("💼 Indicadores")
+            
+            # Subdivisão em 2 colunas para empilhar os 4 quadros (2 em cima, 2 embaixo)
+            kpi_r1_c1, kpi_r1_c2 = st.columns(2)
+            kpi_r1_c1.metric("Total Depositado", formata_br(total_depositado))
+            kpi_r1_c2.metric(
+                "Aporte Pendente", 
+                formata_br(saldo_pendente),
+                help="Valor depositado que ainda não foi alocado em compras."
+            )
+            
+            kpi_r2_c1, kpi_r2_c2 = st.columns(2)
+            kpi_r2_c1.metric("Patrimônio Real", formata_br(patrimonio_real))
+            
+            # Evolução formatada na caixa customizada para o 4º quadro
+            if evolucao_total_carteira >= 0:
+                cor_evo = "#00cc96"
+                seta_evo = "↑"
+            else:
+                cor_evo = "#ef553b"
+                seta_evo = "↓"
+            pct_evo_formatado = f"{evolucao_total_carteira:+.2f}%".replace('.', ',')
+            
+            kpi_r2_c2.markdown(f"""
+                <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.6rem 0.8rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="font-weight: 600; color: gray; font-size: 0.85rem; padding-bottom: 0.15rem;">Evolução</div>
+                    <div style="font-size: 1.4rem; color: {cor_evo};">{seta_evo} {pct_evo_formatado}</div>
+                </div>
+            """, unsafe_allow_html=True)
 
-            # --- GRÁFICO DE DISTRIBUIÇÃO ---
+        st.markdown("---")
+
+        # ==========================================
+        # 4. SEGUNDA DIVISÃO: Gráfico de Pizza vs Detalhamento por Ativos
+        # ==========================================
+        col_grafico, col_tabelas = st.columns([1, 1.5], gap="large")
+        
+        with col_grafico:
             st.subheader("Distribuição")
             df_categoria = carteira_agrupada.groupby('Categoria')['TotalAtual'].sum().reset_index()
             
@@ -178,11 +182,10 @@ def render():
             
             fig = px.pie(df_categoria, values='TotalAtual', names='Categoria', hole=0.4)
             fig.update_traces(textinfo='label+percent')
-            fig.update_layout(height=320, margin=dict(t=10, b=10, l=0, r=0), showlegend=False)
+            fig.update_layout(height=350, margin=dict(t=20, b=20, l=0, r=0), showlegend=False)
             st.plotly_chart(fig, width='stretch')
-
-        with col_direita:
-            # --- DETALHAMENTO POR ATIVOS LADO A LADO ---
+        
+        with col_tabelas:
             st.subheader("Detalhamento por Ativos")
             for cat in carteira_agrupada['Categoria'].unique():
                 
@@ -198,7 +201,7 @@ def render():
                     st.dataframe(df_exibicao, width='stretch', hide_index=True)
 
         # ==========================================
-        # RAIO-X DE EXPOSIÇÃO SETORIAL GLOBAL
+        # 5. TERCEIRA DIVISÃO: Raio-X de Exposição Setorial
         # ==========================================
         st.markdown("---")
         st.subheader("🍕 Raio-X de Exposição Setorial")
