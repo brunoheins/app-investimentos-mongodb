@@ -140,34 +140,35 @@ def render():
         st.markdown("---")
 
         # ==========================================
-        # 3. TERMÔMETRO DA CARTEIRA (CONDENSADO NO TOPO)
+        # 3. LAYOUT EM DUAS COLUNAS PRINCIPAIS:
+        # Coluna Esquerda: Termômetro + Gráfico de Pizza
+        # Coluna Direita: Detalhamento por Ativos
         # ==========================================
-        st.subheader("🎯 Termômetro Macro (Alvo vs. Atual)")
-        df_macro, _, erro_macro = calcular_termometro_macro_usuario(st.session_state.email)
+        col_esquerda, col_direita = st.columns([1, 1.3], gap="large")
         
-        if not erro_macro and df_macro is not None and not df_macro.empty:
-            st.dataframe(
-                df_macro[['Categoria', 'Alvo (%)', 'Atual (%)', 'Status']].style.format({
-                    'Alvo (%)': "{:.2f}%",
-                    'Atual (%)': "{:.2f}%"
-                }).map(
-                    lambda x: 'color: #00C851' if '🟢' in str(x) else ('color: #ff4444' if '🔴' in str(x) else 'color: #ffbb33'), 
-                    subset=['Status']
-                ),
-                width='stretch', 
-                hide_index=True
-            )
-        else:
-            st.info("Configure suas metas macro na aba de Configurações para visualizar o termômetro.")
+        with col_esquerda:
+            # --- TERMÔMETRO MACRO CONDENSADO ---
+            st.subheader("🎯 Termômetro Macro")
+            df_macro, _, erro_macro = calcular_termometro_macro_usuario(st.session_state.email)
+            
+            if not erro_macro and df_macro is not None and not df_macro.empty:
+                st.dataframe(
+                    df_macro[['Categoria', 'Alvo (%)', 'Atual (%)', 'Status']].style.format({
+                        'Alvo (%)': "{:.2f}%",
+                        'Atual (%)': "{:.2f}%"
+                    }).map(
+                        lambda x: 'color: #00C851' if '🟢' in str(x) else ('color: #ff4444' if '🔴' in str(x) else 'color: #ffbb33'), 
+                        subset=['Status']
+                    ),
+                    width='stretch', 
+                    hide_index=True
+                )
+            else:
+                st.info("Configure suas metas macro nas Configurações.")
 
-        st.markdown("---")
-        
-        # ==========================================
-        # 4. DISTRIBUIÇÃO E DETALHAMENTO LADO A LADO
-        # ==========================================
-        col_grafico, col_tabelas = st.columns([1, 1.5], gap="large")
-        
-        with col_grafico:
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- GRÁFICO DE DISTRIBUIÇÃO ---
             st.subheader("Distribuição")
             df_categoria = carteira_agrupada.groupby('Categoria')['TotalAtual'].sum().reset_index()
             
@@ -175,17 +176,16 @@ def render():
                 df_caixa = pd.DataFrame([{'Categoria': 'Aporte Pendente', 'TotalAtual': saldo_pendente}])
                 df_categoria = pd.concat([df_categoria, df_caixa], ignore_index=True)
             
-            # Gráfico limpo, focando apenas no percentual de alocação
             fig = px.pie(df_categoria, values='TotalAtual', names='Categoria', hole=0.4)
             fig.update_traces(textinfo='label+percent')
-            fig.update_layout(height=350, margin=dict(t=20, b=20, l=0, r=0), showlegend=False)
+            fig.update_layout(height=320, margin=dict(t=10, b=10, l=0, r=0), showlegend=False)
             st.plotly_chart(fig, width='stretch')
-        
-        with col_tabelas:
+
+        with col_direita:
+            # --- DETALHAMENTO POR ATIVOS LADO A LADO ---
             st.subheader("Detalhamento por Ativos")
             for cat in carteira_agrupada['Categoria'].unique():
                 
-                # Mantém o título neutro para evitar gatilhos emocionais
                 with st.expander(f"📁  {cat}", expanded=False): 
                     df_exibicao = carteira_agrupada[carteira_agrupada['Categoria'] == cat][['Ativo', 'Setor', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'TotalAtual', 'EvolucaoPct']].copy()
                     
