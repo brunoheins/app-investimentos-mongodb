@@ -140,9 +140,9 @@ def render():
         st.markdown("---")
 
         # ==========================================
-        # 3. TERMÔMETRO DA CARTEIRA (NOVO RECURSO CENTRALIZADO)
+        # 3. TERMÔMETRO DA CARTEIRA (CONDENSADO NO TOPO)
         # ==========================================
-        st.subheader("🎯 Termômetro da Carteira (Alvo vs. Atual)")
+        st.subheader("🎯 Termômetro Macro (Alvo vs. Atual)")
         df_macro, _, erro_macro = calcular_termometro_macro_usuario(st.session_state.email)
         
         if not erro_macro and df_macro is not None and not df_macro.empty:
@@ -162,6 +162,9 @@ def render():
 
         st.markdown("---")
         
+        # ==========================================
+        # 4. DISTRIBUIÇÃO E DETALHAMENTO LADO A LADO
+        # ==========================================
         col_grafico, col_tabelas = st.columns([1, 1.5], gap="large")
         
         with col_grafico:
