@@ -54,6 +54,16 @@ def formata_br(valor):
     try: return f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except: return "R$ 0,00"
 
+def normalizar_categoria(cat_str):
+    c = str(cat_str).strip().upper()
+    if c in ["IPCA", "RF", "RENDA FIXA", "TESOURO", "PREFIXADO", "CDI", "SELIC"]: return "Renda Fixa"
+    if c in ["AÇÕES", "ACOES", "AÇÃO", "ACAO", "BRASIL"]: return "Ações"
+    if c in ["FIIS", "FII", "FUNDO IMOBILIARIO", "FUNDOS IMOBILIÁRIOS"]: return "FIIs"
+    if c in ["STOCKS", "STOCK", "EXTERIOR"]: return "Stocks"
+    if c in ["REITS", "REIT"]: return "REITs"
+    if c in ["ETFS", "ETF"]: return "ETFs"
+    return str(cat_str).strip()
+
 # ==========================================
 # 3. O "TRADUTOR" MAGNÍFICO (ADAPTER PATTERN)
 # ==========================================
@@ -126,6 +136,129 @@ def ler_planilha(aba_nome):
     except Exception as e:
         st.error(f"Erro ao ler a tabela '{aba_nome}': {e}")
         return pd.DataFrame()
+
+# ==========================================
+# 3.1. FUNÇÃO CENTRALIZADA: TERMÔMETRO MACRO (DRY)
+# ==========================================
+def calcular_termometro_macro_usuario(email):
+    """
+    Calcula o termômetro macro (Alvo vs Atual) unificado e personalizado para o e-mail,
+    eliminando redundâncias entre a Tela de Resumo e o Guia de Aportes.
+    """
+    df_conf = ler_planilha("Configuracao")
+    df_ativos_conf = ler_planilha("Ativos_Config")
+    df_invest = ler_planilha("Investimentos")
+
+    if not df_conf.empty: df_conf.columns = [str(c).strip() for c in df_conf.columns]
+
+    email_lower = str(email).strip().lower()
+    if df_conf.empty or email_lower not in df_conf['Email'].astype(str).str.strip().str.lower().values:
+        return None, 0.0, "Metas de Alocação Macro não definidas na Configuração."
+    
+    if df_ativos_conf.empty:
+        df_ativos_conf = pd.DataFrame(columns=['Email', 'Categoria', 'Ativo', 'Peso'])
+
+    df_conf['Email'] = df_conf['Email'].astype(str).str.strip().str.lower()
+    user_conf = df_conf[df_conf['Email'] == email_lower].iloc[0].to_dict()
+
+    peso_rv = extrair_numero_br(user_conf.get('RV', 50)) / 100.0
+    peso_br = extrair_numero_br(user_conf.get('RV_Brasil', 50)) / 100.0
+    peso_ex = extrair_numero_br(user_conf.get('RV_Exterior', 50)) / 100.0
+
+    cat_targets = {
+        "Renda Fixa": extrair_numero_br(user_conf.get('RF', 50)) / 100.0,
+        "Ações": peso_rv * peso_br * (extrair_numero_br(user_conf.get('BR_Acoes', 50)) / 100.0),
+        "FIIs": peso_rv * peso_br * (extrair_numero_br(user_conf.get('BR_FIIs', 50)) / 100.0),
+        "Stocks": peso_rv * peso_ex * (extrair_numero_br(user_conf.get('EX_Stocks', 40)) / 100.0),
+        "REITs": peso_rv * peso_ex * (extrair_numero_br(user_conf.get('EX_REITs', 30)) / 100.0),
+        "ETFs": peso_rv * peso_ex * (extrair_numero_br(user_conf.get('EX_ETFs', 30)) / 100.0),
+    }
+
+    df_ativos_conf['Email'] = df_ativos_conf['Email'].astype(str).str.strip().str.lower()
+    df_user_ativos = df_ativos_conf[df_ativos_conf['Email'] == email_lower].copy()
+    
+    cotacoes_dict = obter_cotacoes(email_lower)
+
+    # 1. Leitura de Ativos Alvos
+    ativos_alvos = []
+    for _, row in df_user_ativos.iterrows():
+        cat = normalizar_categoria(row['Categoria'])
+        if cat == "Renda Fixa": continue 
+        ativo = str(row['Ativo']).strip().upper()
+        val_peso = row.get('Peso') if pd.notna(row.get('Peso')) else row.get('Peso (%)', 0)
+        peso_global = cat_targets.get(cat, 0) * (extrair_numero_br(val_peso) / 100.0)
+        if ativo and ativo != "NAN":
+            ativos_alvos.append({'Categoria': cat, 'Ativo': ativo, 'PesoGlobal': peso_global})
+
+    peso_rf = cat_targets.get("Renda Fixa", 0)
+    if peso_rf > 0:
+        ativos_alvos.append({'Categoria': 'Renda Fixa', 'Ativo': 'OPORTUNIDADE DE RENDA FIXA', 'PesoGlobal': peso_rf})
+
+    df_alvos = pd.DataFrame(ativos_alvos)
+    if not df_alvos.empty:
+        df_alvos['Is_Target'] = True
+    else:
+        df_alvos = pd.DataFrame(columns=['Categoria', 'Ativo', 'PesoGlobal', 'Is_Target'])
+
+    # 2. Leitura da Carteira Real
+    df_carteira = pd.DataFrame(columns=['Categoria', 'Ativo', 'TotalAtual'])
+    
+    if not df_invest.empty: df_invest.columns = [str(c).strip() for c in df_invest.columns]
+    
+    if not df_invest.empty and 'Email' in df_invest.columns:
+        df_invest['Email'] = df_invest['Email'].astype(str).str.strip().str.lower()
+        df_user_invest = df_invest[df_invest['Email'] == email_lower].copy()
+        
+        if not df_user_invest.empty:
+            df_user_invest['Ativo'] = df_user_invest['Ativo'].astype(str).str.strip().str.upper()
+            df_user_invest['Categoria'] = df_user_invest['Categoria'].apply(normalizar_categoria)
+            df_user_invest['Quantidade'] = df_user_invest['Quantidade'].apply(extrair_numero_br)
+            df_user_invest['PrecoLive'] = df_user_invest['Ativo'].map(cotacoes_dict).fillna(0.0)
+            df_user_invest['TotalAtual'] = df_user_invest['Quantidade'] * df_user_invest['PrecoLive']
+            
+            col_preco = next((c for c in df_user_invest.columns if 'prec' in str(c).lower() or 'custo' in str(c).lower()), 'Preco')
+
+            for idx_inv, row_inv in df_user_invest.iterrows():
+                if row_inv['Categoria'] == "Renda Fixa" and row_inv['TotalAtual'] == 0:
+                    preco_digitado = extrair_numero_br(row_inv.get(col_preco, 0))
+                    df_user_invest.at[idx_inv, 'TotalAtual'] = row_inv['Quantidade'] * preco_digitado
+
+            df_user_invest.loc[df_user_invest['Categoria'] == 'Renda Fixa', 'Ativo'] = 'OPORTUNIDADE DE RENDA FIXA'
+
+            df_carteira = df_user_invest.groupby(['Categoria', 'Ativo']).agg({
+                'TotalAtual': 'sum'
+            }).reset_index()
+
+    total_atual = df_carteira['TotalAtual'].sum() if not df_carteira.empty else 0
+    
+    # 3. Cruzamento e Cálculo Macro (Estado Atual Puro - Aporte 0)
+    df_calc = pd.merge(df_alvos, df_carteira, on=['Categoria', 'Ativo'], how='outer')
+    df_calc['Is_Target'] = df_calc['Is_Target'].fillna(False)
+    df_calc['PesoGlobal'] = df_calc['PesoGlobal'].fillna(0)
+    df_calc['TotalAtual'] = df_calc['TotalAtual'].fillna(0)
+    
+    df_calc['ValorAlvo'] = df_calc['PesoGlobal'] * total_atual if total_atual > 0 else 0
+
+    df_resumo_macro = df_calc.groupby('Categoria').agg(
+        Alvo=('ValorAlvo', 'sum'),
+        Atual=('TotalAtual', 'sum')
+    ).reset_index()
+    
+    if total_atual > 0:
+        df_resumo_macro['Alvo (%)'] = (df_resumo_macro['Alvo'] / total_atual * 100).round(1)
+        df_resumo_macro['Atual (%)'] = (df_resumo_macro['Atual'] / total_atual * 100).round(1)
+    else:
+        df_resumo_macro['Alvo (%)'] = 0.0
+        df_resumo_macro['Atual (%)'] = 0.0
+
+    df_resumo_macro['Status'] = df_resumo_macro.apply(
+        lambda x: "🟢 Na Meta" if abs(x['Alvo (%)'] - x['Atual (%)']) <= 2 
+        else ("🔴 Abaixo da Meta" if x['Atual (%)'] < x['Alvo (%)'] else "🟡 Acima da Meta"), 
+        axis=1
+    )
+    df_resumo_macro = df_resumo_macro.sort_values(by='Alvo (%)', ascending=False).reset_index(drop=True)
+
+    return df_resumo_macro, total_atual, None
 
 # ==========================================
 # 4. TRADUTORES DE GRAVAÇÃO (EMBEDDING E UNIFICAÇÃO)
@@ -403,7 +536,7 @@ def obter_cotacoes(email_usuario):
     
     ativos_para_atualizar = []
     
-    # 2. CONSULTA CIRÚRGICA EM LOTE NO MONGO (Substitui o loop de find_one)
+    # 2. CONSULTA CIRÚRGICA EM LOTE NO MONGO
     try:
         docs_cache = list(db.cotacoes_cache.find({"_id": {"$in": list(ativos_buscados)}}))
         mapa_cache = {doc["_id"]: doc for doc in docs_cache}
@@ -603,8 +736,6 @@ def obter_ativos_por_categoria(email_usuario):
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def obter_historico_benchmarks(mes_inicial, mes_final):
-    """Busca o histórico e usa o MongoDB como Cache Diário (D-0) para evitar Rate Limit"""
-    
     doc_id = f"benchmarks_{mes_inicial}_{mes_final}"
     agora = datetime.now()
     hoje_zero_hora = agora.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -709,12 +840,11 @@ def obter_historico_benchmarks(mes_inicial, mes_final):
 def buscar_historico_dividendos(df_transacoes):
     hoje = pd.Timestamp.today().tz_localize(None)
     um_ano_atras = hoje - pd.DateOffset(months=12)
-    dois_anos_atras = hoje - pd.DateOffset(months=24) # Margem de segurança para o banco
+    dois_anos_atras = hoje - pd.DateOffset(months=24) 
     
     dados_dividendos = []
     ativos_com_erro = []
 
-    # Localiza a coluna de Data dinamicamente
     col_data = next((c for c in df_transacoes.columns if 'dat' in str(c).lower()), None)
     
     if col_data:
@@ -722,14 +852,12 @@ def buscar_historico_dividendos(df_transacoes):
     else:
         df_transacoes['Data_Calc'] = pd.to_datetime('2000-01-01')
 
-    # Remove linhas onde a data não pôde ser lida
     df_transacoes = df_transacoes.dropna(subset=['Data_Calc'])
     ativos = df_transacoes['Ativo'].unique()
 
     agora = datetime.now()
     hoje_zero_hora = agora.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # --- OTIMIZAÇÃO 1: NORMALIZAÇÃO PRÉVIA DOS TICKERS ---
     mapa_tickers = {}
     for ativo in ativos:
         ticker_yf = ativo
@@ -739,9 +867,7 @@ def buscar_historico_dividendos(df_transacoes):
 
     tickers_unicos = list(set(mapa_tickers.values()))
 
-    # --- OTIMIZAÇÃO 2: CONSULTA EM LOTE NO MONGODB (BULK READ) ---
     try:
-        from utils import db # Certifique-se de que a importação do banco está acessível
         docs_cache = list(db.dividendos_cache.find({"_id": {"$in": tickers_unicos}}))
         cache_global = {doc["_id"]: doc for doc in docs_cache}
     except Exception as e:
@@ -754,16 +880,13 @@ def buscar_historico_dividendos(df_transacoes):
         divs = pd.Series(dtype=float)
 
         try:
-            # 1. VERIFICA O CACHE EM RAM PRIMEIRO
             doc_cache = cache_global.get(ticker_yf)
             
-            # Se já foi atualizado hoje, puxa da RAM instantaneamente
             if doc_cache and doc_cache.get("ultima_atualizacao", datetime.min) >= hoje_zero_hora:
                 divs_dict = doc_cache.get("dividendos", {})
                 if divs_dict:
                     divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
             else:
-                # 2. SE NÃO TEM OU ESTÁ VELHO, BATE NO YAHOO FINANCE
                 ticker = yf.Ticker(ticker_yf)
                 divs_raw = ticker.dividends 
                 
@@ -785,7 +908,6 @@ def buscar_historico_dividendos(df_transacoes):
                         upsert=True
                     )
 
-            # 3. CRUZA O HISTÓRICO GLOBAL COM A CARTEIRA
             if not divs.empty:
                 divs = divs[divs.index >= um_ano_atras]
                 
@@ -802,10 +924,9 @@ def buscar_historico_dividendos(df_transacoes):
                         })
                         
         except Exception as e:
-            # 4. FALLBACK BLINDADO OTIMIZADO DA RAM
             print(f"Falha na API para {ativo}, tentando usar cache velho: {e}")
             try:
-                doc_velho = cache_global.get(ticker_yf) # Não vai mais no banco, pega da RAM!
+                doc_velho = cache_global.get(ticker_yf) 
                 if doc_velho and doc_velho.get("dividendos"):
                     divs_dict = doc_velho.get("dividendos", {})
                     divs = pd.Series({pd.to_datetime(k): float(v) for k, v in divs_dict.items()})
