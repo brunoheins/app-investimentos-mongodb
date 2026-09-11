@@ -113,7 +113,7 @@ def render():
         # ==========================================
         # 3. PRIMEIRA DIVISÃO: 2 Colunas (Termômetro vs 4 Quadros de KPIs)
         # ==========================================
-        col_termometro, col_kpis = st.columns([1.3, 1], gap="large")
+        col_termometro, col_kpis = st.columns([1, 1.3], gap="large")
         
         with col_termometro:
             st.subheader("🎯 Termômetro Macro")
