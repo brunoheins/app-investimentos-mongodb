@@ -192,7 +192,7 @@ def render():
             with st.expander(f"📂  {cat}", expanded=False): 
                 df_exibicao = carteira_agrupada[carteira_agrupada['Categoria'] == cat][['Ativo', 'Setor', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'TotalAtual', 'EvolucaoPct']].copy()
                 
-                df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.'].str.rstrip('0').str.rstrip(',')
+                df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.').str.rstrip('0').str.rstrip(',')
                 df_exibicao['PrecoMedio'] = df_exibicao['PrecoMedio'].apply(formata_br)
                 df_exibicao['PrecoAtual'] = df_exibicao['PrecoAtual'].apply(formata_br)
                 df_exibicao['TotalAtual'] = df_exibicao['TotalAtual'].apply(formata_br)
