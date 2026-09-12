@@ -109,7 +109,15 @@ def render():
         col_c1, col_c2, col_c3, col_c4 = st.columns(4)
         col_c1.metric("Patrimônio Real", formata_br(patrimonio_real))
         col_c2.metric("Total Depositado", formata_br(total_depositado))
-        col_c3.metric("Rentabilidade (R$)", formata_br(rentabilidade_abs), delta=formata_br(rentabilidade_abs))
+
+        # Cores e setas padronizadas para Rentabilidade e Evolução
+        if rentabilidade_abs >= 0:
+            cor_rent = "#00cc96"
+            seta_rent = "↑"
+        else:
+            cor_rent = "#ef553b"
+            seta_rent = "↓"
+        rent_formatado = f"{seta_rent} {formata_br(rentabilidade_abs)}"
 
         if evolucao_total_carteira >= 0:
             cor_evo = "#00cc96"
@@ -117,12 +125,21 @@ def render():
         else:
             cor_evo = "#ef553b"
             seta_evo = "↓"
-        pct_evo_formatado = f"{evolucao_total_carteira:+.2f}%".replace('.', ',')
-        
+        pct_evo_formatado = f"{seta_evo} {evolucao_total_carteira:+.2f}%".replace('.', ',')
+
+        # Quadro 3: Rentabilidade (R$) com cor limpa
+        col_c3.markdown(f"""
+            <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (R$)</div>
+                <div style="font-size: 1.8rem; color: {cor_rent};">{rent_formatado}</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Quadro 4: Evolução Total com cor limpa
         col_c4.markdown(f"""
             <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Evolução Total</div>
-                <div style="font-size: 1.8rem; color: {cor_evo};">{seta_evo} {pct_evo_formatado}</div>
+                <div style="font-size: 1.8rem; color: {cor_evo};">{pct_evo_formatado}</div>
             </div>
         """, unsafe_allow_html=True)
         
@@ -175,7 +192,7 @@ def render():
             with st.expander(f"📂  {cat}", expanded=False): 
                 df_exibicao = carteira_agrupada[carteira_agrupada['Categoria'] == cat][['Ativo', 'Setor', 'Quantidade', 'PrecoMedio', 'PrecoAtual', 'TotalAtual', 'EvolucaoPct']].copy()
                 
-                df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.').str.rstrip('0').str.rstrip(',')
+                df_exibicao['Quantidade'] = df_exibicao['Quantidade'].map('{:,.4f}'.format).str.replace(',', 'X').str.replace('.', ',').str.replace('X', '.'].str.rstrip('0').str.rstrip(',')
                 df_exibicao['PrecoMedio'] = df_exibicao['PrecoMedio'].apply(formata_br)
                 df_exibicao['PrecoAtual'] = df_exibicao['PrecoAtual'].apply(formata_br)
                 df_exibicao['TotalAtual'] = df_exibicao['TotalAtual'].apply(formata_br)
