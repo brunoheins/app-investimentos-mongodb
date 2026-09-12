@@ -148,7 +148,7 @@ def render():
         # ==========================================
         # CAMADA 2: A DECISÃO ESTRATÉGICA (Termômetro vs Distribuição)
         # ==========================================
-        col_termometro, col_grafico = st.columns([1, 1.3], gap="large")
+        col_termometro, col_grafico = st.columns([1, 1], gap="large")
         
         with col_termometro:
             st.subheader("🎯 Termômetro Macro (Alvo vs. Atual)")
