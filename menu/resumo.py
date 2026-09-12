@@ -101,19 +101,21 @@ def render():
                 meus_depositos['Valor'] = meus_depositos['Valor'].apply(extrair_numero_br)
                 total_depositado = meus_depositos['Valor'].sum()
         
-        # --- CÁLCULO FINAL COM O SALDO PENDENTE ---
+        # --- CÁLCULO FINAL COM O SALDO PENDENTE E RENTABILIDADE ---
         saldo_pendente = max(0, total_depositado - total_gasto_historico)
         total_ativos_atual = carteira_agrupada['TotalAtual'].sum()
         
         # Patrimônio Real (Ativos + Depósitos não alocados)
         patrimonio_real = total_ativos_atual + saldo_pendente
         
-        evolucao_total_carteira = ((patrimonio_real - total_depositado) / total_depositado if total_depositado > 0 else 0) * 100
+        # Rentabilidade Absoluta (R$) e Percentual
+        rentabilidade_abs = patrimonio_real - total_depositado
+        evolucao_total_carteira = (rentabilidade_abs / total_depositado if total_depositado > 0 else 0) * 100
         
         # ==========================================
         # 3. PRIMEIRA DIVISÃO: 2 Colunas (Termômetro vs 4 Quadros de KPIs)
         # ==========================================
-        col_termometro, col_kpis = st.columns([1, 1.3], gap="large")
+        col_termometro, col_kpis = st.columns([1.3, 1], gap="large")
         
         with col_termometro:
             st.subheader("🎯 Termômetro Macro")
@@ -141,9 +143,10 @@ def render():
             kpi_r1_c1, kpi_r1_c2 = st.columns(2)
             kpi_r1_c1.metric("Total Depositado", formata_br(total_depositado))
             kpi_r1_c2.metric(
-                "Aporte Pendente", 
-                formata_br(saldo_pendente),
-                help="Valor depositado que ainda não foi alocado em compras."
+                "Rentabilidade (R$)", 
+                formata_br(rentabilidade_abs),
+                delta=formata_br(rentabilidade_abs),
+                help="Lucro ou prejuízo absoluto acumulado na carteira (Patrimônio Real - Total Depositado)."
             )
             
             kpi_r2_c1, kpi_r2_c2 = st.columns(2)
