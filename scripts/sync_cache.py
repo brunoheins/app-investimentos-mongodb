@@ -59,7 +59,6 @@ def atualizar_tesouro(db):
             titulo = row['Titulo_Completo']
             preco_compra = float(row.get('PU Compra Manha', 0.0))
             
-            # Atualizamos direto na cotacoes_cache para o utils.py pegar automático
             if preco_compra > 0:
                 db.cotacoes_cache.update_one(
                     {"_id": titulo},
@@ -127,7 +126,7 @@ def atualizar_bolsa_rv(db, ativos_bolsa):
                 else:
                     preco = s_last.get(p_col)
                     break
-                    
+                
             if preco is not None and not pd.isna(preco):
                 preco_float = float(preco)
                 if not ticker.endswith(".SA"):
@@ -175,7 +174,50 @@ def atualizar_dividendos(db, ativos_bolsa):
                 )
         except Exception as e:
             print(f"Erro ao baixar proventos para {ativo}: {e}")
+            
     print("✅ Histórico de Dividendos atualizado.")
+
+def atualizar_historico_mensal_ativos(db, ativos_bolsa):
+    """Baixa e consolida todo o histórico mensal de preços de fechamento (desde 5 anos atrás ou início da base) para o MongoDB."""
+    print(f"=== Iniciando Sincronização do HISTÓRICO MENSAL DE PREÇOS ({len(ativos_bolsa)} ativos) ===")
+    if not ativos_bolsa: return
+
+    # Define o range histórico (ex: últimos 5 anos até o mês atual)
+    hoje = datetime.now()
+    data_inicio = (hoje - timedelta(days=365 * 5)).strftime('%Y-%m-01')
+    data_fim = hoje.strftime('%Y-%m-%d')
+
+    for ativo in ativos_bolsa:
+        ticker = ativo
+        if "." not in ticker and re.search(r'\d+$', ticker):
+            ticker = f"{ticker}.SA"
+
+        try:
+            df_yf = yf.download(ticker, start=data_inicio, end=data_fim, interval='1mo', progress=False)
+            if not df_yf.empty and 'Close' in df_yf.columns:
+                df_close = df_yf['Close']
+                if isinstance(df_close, pd.DataFrame):
+                    df_close = df_close.iloc[:, 0]
+                if df_close.index.tz is not None:
+                    df_close.index = df_close.index.tz_localize(None)
+
+                precos_mensais = {}
+                for idx_date, val in df_close.items():
+                    m_str = str(idx_date)[:7] # Formato YYYY-MM
+                    if pd.notna(val):
+                        precos_mensais[m_str] = float(val)
+
+                if precos_mensais:
+                    db.historico_mensal_cache.update_one(
+                        {"_id": ativo},
+                        {"$set": {"precos_mensais": precos_mensais, "ultima_atualizacao": hoje}},
+                        upsert=True
+                    )
+            print(f"📊 Histórico mensal sincronizado para: {ativo}")
+        except Exception as e:
+            print(f"❌ Erro ao atualizar histórico mensal de {ativo}: {e}")
+            
+    print("✅ Histórico Mensal de Ativos atualizado com sucesso no MongoDB.")
 
 if __name__ == "__main__":
     db = get_db()
@@ -184,21 +226,22 @@ if __name__ == "__main__":
     agora_utc = datetime.utcnow()
     agora_brt = agora_utc - timedelta(hours=3)
     hora_atual = agora_brt.hour
+    dia_atual = agora_brt.day
     
-    print(f"Iniciando rotina. Hora atual no Brasil (BRT): {hora_atual}h")
+    print(f"Iniciando rotina. Data/Hora BRT: Dia {dia_atual}, {hora_atual}h")
     
     # 2. Descobre todos os ativos no banco
     titulos_td, ativos_bolsa = descobrir_todos_ativos(db)
     
-    # 3. O MAESTRO: Decide o que rodar baseado na hora
-    
-    # Sempre roda RV (Ações, FIIs, ETFs) de hora em hora
+    # 3. O MAESTRO: Rotinas horárias e diárias
     atualizar_bolsa_rv(db, ativos_bolsa)
     
-    # Roda Tesouro apenas às 10h e 15h
     if hora_atual in [10, 15]:
         atualizar_tesouro(db)
         
-    # Roda Dividendos apenas às 9h da manhã
     if hora_atual == 9:
         atualizar_dividendos(db, ativos_bolsa)
+
+    # 4. ROTINA MENSAL: Executa apenas no dia 1º de cada mês às 4h da manhã
+    if dia_atual == 1 and hora_atual == 4:
+        atualizar_historico_mensal_ativos(db, ativos_bolsa)
