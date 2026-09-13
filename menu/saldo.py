@@ -3,21 +3,22 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import yfinance as yf
-from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, obter_historico_benchmarks
+from datetime import datetime
+from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, obter_historico_benchmarks, db
 
 # ==========================================
 # RENDERIZAÇÃO DA PÁGINA
 # ==========================================
 def render():
     st.title("📈 Evolução Real do Patrimônio")
-    st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos + Aportes Pendentes).")
+    st.markdown("Compare o **Dinheiro Líquido do Bolso** (Aportes menos Saques) com o **Patrimônio Real** (Ativos precificados mês a mês + Aportes Pendentes).")
 
     sucesso_carregamento = False
 
     # ==========================================
     # 1. FASE DE EXTRAÇÃO E PROCESSAMENTO
     # ==========================================
-    with st.status("Construindo linha do tempo da sua carteira...", expanded=True) as status:
+    with st.status("Construindo linha do tempo inteligente da sua carteira...", expanded=True) as status:
         hoje = pd.Timestamp.today()
         
         st.write("Lendo movimentações de caixa...")
@@ -62,24 +63,18 @@ def render():
                 else:
                     df_user_inv['PrecoCusto'] = 0.0
                 
-                st.write("Buscando cotações atualizadas...")
-                cotacoes_dict = obter_cotacoes(st.session_state.email)
-                df_user_inv['PrecoLive'] = df_user_inv['Ativo'].map(cotacoes_dict).fillna(0.0)
-                
-                df_user_inv['TemCotacao'] = df_user_inv['PrecoLive'] > 0
                 df_user_inv['TotalCusto'] = df_user_inv['Quantidade'] * df_user_inv['PrecoCusto']
-                
                 df_user_inv['MesAno'] = df_user_inv['DataCompra'].dt.strftime('%Y-%m')
-                df_inv_agrupado = df_user_inv.groupby(['MesAno', 'Ativo']).agg({
+                
+                # Agrupa por mês e ativo para saber exatamente o volume transacionado no período
+                df_inv_agrupado = df_user_inv.groupby(['MesAno', 'Ativo', 'Categoria']).agg({
                     'Quantidade': 'sum',
-                    'TotalCusto': 'sum',
-                    'PrecoLive': 'first',
-                    'TemCotacao': 'first'
+                    'TotalCusto': 'sum'
                 }).reset_index()
             else:
-                df_inv_agrupado = pd.DataFrame(columns=['MesAno', 'Ativo', 'Quantidade', 'TotalCusto', 'PrecoLive', 'TemCotacao'])
+                df_inv_agrupado = pd.DataFrame(columns=['MesAno', 'Ativo', 'Categoria', 'Quantidade', 'TotalCusto'])
         else:
-            df_inv_agrupado = pd.DataFrame(columns=['MesAno', 'Ativo', 'Quantidade', 'TotalCusto', 'PrecoLive', 'TemCotacao'])
+            df_inv_agrupado = pd.DataFrame(columns=['MesAno', 'Ativo', 'Categoria', 'Quantidade', 'TotalCusto'])
 
         if df_dep_agrupado.empty and df_inv_agrupado.empty:
             status.update(label="Nenhum dado encontrado.", state="complete", expanded=False)
@@ -105,6 +100,62 @@ def render():
         
         dict_benchmarks = obter_historico_benchmarks(mes_inicial, mes_final)
         
+        # ==========================================
+        # 1.1 CACHE INCREMENTAL DE PREÇOS MENSAIS (MONGODB)
+        # ==========================================
+        st.write("Sincronizando histórico mensal de preços dos ativos...")
+        ativos_unicos = df_inv_agrupado['Ativo'].unique().tolist() if not df_inv_agrupado.empty else []
+        precos_historicos_cache = {} # Mapeia {(ativo, mes): preco}
+
+        for ativo in ativos_unicos:
+            ticker_yf = ativo
+            if "." not in ticker_yf and not any(p in ticker_yf for p in ["TESOURO", " "]):
+                ticker_yf = f"{ticker_yf}.SA"
+
+            # Consulta o cache no MongoDB para este ativo
+            doc_mongo = db.historico_mensal_cache.find_one({"_id": ativo})
+            precos_salvos = doc_mongo.get("precos_mensais", {}) if doc_mongo else {}
+
+            # Identifica quais meses da timeline ainda não estão salvos no banco
+            meses_faltantes = [m for m in range_meses if m not in precos_salvos]
+
+            if meses_faltantes and not any(p in ativo for p in ["TESOURO", " "]):
+                try:
+                    # Baixa do Yahoo Finance apenas o intervalo necessário para cobrir os meses faltantes
+                    dt_ini_dl = f"{min(meses_faltantes)}-01"
+                    dt_fim_dl = (pd.to_datetime(f"{max(meses_faltantes)}-01") + pd.offsets.MonthEnd(1)).strftime('%Y-%m-%d')
+                    
+                    df_yf = yf.download(ticker_yf, start=dt_ini_dl, end=dt_fim_dl, interval='1mo', progress=False)
+                    if not df_yf.empty and 'Close' in df_yf.columns:
+                        df_close = df_yf['Close']
+                        if isinstance(df_close, pd.DataFrame):
+                            df_close = df_close.iloc[:, 0]
+                        if df_close.index.tz is not None:
+                            df_close.index = df_close.index.tz_localize(None)
+
+                        for idx_date, val in df_close.items():
+                            m_str = str(idx_date)[:7]
+                            if pd.notna(val):
+                                precos_salvos[m_str] = float(val)
+
+                        # Atualiza o MongoDB com os novos meses baixados (Cache Incremental)
+                        db.historico_mensal_cache.update_one(
+                            {"_id": ativo},
+                            {"$set": {"precos_mensais": precos_salvos}},
+                            upsert=True
+                        )
+                except Exception as e:
+                    print(f"Erro ao baixar histórico para {ativo}: {e}")
+
+            for m in range_meses:
+                precos_historicos_cache[(ativo, m)] = precos_salvos.get(m, 0.0)
+
+        # Fallback de cotação atual caso o histórico mensal falhe para algum ativo recente
+        cotacoes_atuais = obter_cotacoes(st.session_state.email)
+
+        # ==========================================
+        # 1.2 PROCESSAMENTO DA TIMELINE DE SALDOS
+        # ==========================================
         saldo_cdi = 0.0
         saldo_ibov = 0.0
         saldo_sp500 = 0.0
@@ -127,7 +178,6 @@ def render():
             saldo_sp500 += aporte_mes
             saldo_ipca += aporte_mes
             
-            # Aplica a rentabilidade do mês atual
             b_data = dict_benchmarks.get(mes, {})
             saldo_cdi *= (1 + float(b_data.get('CDI', 0.0)))
             saldo_ibov *= (1 + float(b_data.get('IBOV', 0.0)))
@@ -147,33 +197,41 @@ def render():
         df_timeline['Valor_IPCA'] = linha_ipca
 
         linha_patrimonio = []
-        estoque_ativos = {} 
         
         for i, mes in enumerate(range_meses):
-            compras_mes = df_inv_agrupado[df_inv_agrupado['MesAno'] == mes]
-            for _, row in compras_mes.iterrows():
-                ativo = row['Ativo']
-                if ativo not in estoque_ativos:
-                    estoque_ativos[ativo] = {
-                        'qtd': 0.0, 'custo_acumulado': 0.0, 
-                        'preco_live': row['PrecoLive'], 'tem_cotacao': row['TemCotacao']
-                    }
-                
-                estoque_ativos[ativo]['qtd'] += row['Quantidade']
-                estoque_ativos[ativo]['custo_acumulado'] += row['TotalCusto']
-                estoque_ativos[ativo]['preco_live'] = row['PrecoLive']
-                estoque_ativos[ativo]['tem_cotacao'] = row['TemCotacao']
+            # Soma todas as compras acumuladas até o mês atual
+            compras_ate_mes = df_inv_agrupado[df_inv_agrupado['MesAno'] <= mes]
             
             valor_mercado_mes = 0.0
             custo_total_mes = 0.0
-            for d in estoque_ativos.values():
-                custo_total_mes += d['custo_acumulado']
-                if d['tem_cotacao']:
-                    valor_mercado_mes += d['qtd'] * d['preco_live']
-                else:
-                    valor_mercado_mes += d['custo_acumulado']
-                    
-            # A mágica do Caixa Pendente na linha do tempo
+
+            if not compras_ate_mes.empty:
+                # Agrupa a quantidade total acumulada de cada ativo até este mês
+                posicao_acumulada = compras_ate_mes.groupby('Ativo').agg({
+                    'Quantidade': 'sum',
+                    'TotalCusto': 'sum',
+                    'Categoria': 'first'
+                }).reset_index()
+
+                for _, row in posicao_acumulada.iterrows():
+                    ativo = row['Ativo']
+                    qtd = row['Quantidade']
+                    custo = row['TotalCusto']
+                    custo_total_mes += custo
+
+                    # Pega o preço histórico do final daquele mês específico no cache
+                    preco_mes = precos_historicos_cache.get((ativo, mes), 0.0)
+
+                    # Se for Renda Fixa ou Tesouro (que não tem preço de bolsa mensal padrão), usa o custo ou cotação atual
+                    if "TESOURO" in ativo or " " in ativo or row['Categoria'] == 'Renda Fixa':
+                        preco_mes = cotacoes_atuais.get(ativo, custo / qtd if qtd > 0 else 0.0)
+
+                    if preco_mes > 0:
+                        valor_mercado_mes += qtd * preco_mes
+                    else:
+                        # Fallback se não houver cotação histórica nem atual
+                        valor_mercado_mes += custo
+
             aportado_ate_mes = linha_aportes[i]
             caixa_livre_mes = max(0, aportado_ate_mes - custo_total_mes)
             
@@ -181,13 +239,11 @@ def render():
             linha_patrimonio.append(patrimonio_real_mes)
             
         df_timeline['PatrimonioReal'] = linha_patrimonio
-        
         df_timeline['MesExibicao'] = pd.to_datetime(df_timeline['MesAno'], format='%Y-%m').dt.strftime('%m/%Y')
         df_timeline.loc[df_timeline.index[-1], 'MesExibicao'] = "Hoje"
 
         sucesso_carregamento = True
         status.update(label="Linha do tempo processada com sucesso!", state="complete", expanded=False)
-
 
     # ==========================================
     # 2. RENDERIZAÇÃO DA INTERFACE (MÉTRICAS E GRÁFICOS)
@@ -204,13 +260,11 @@ def render():
         lucro_rs = live_atual - live_aportado
         lucro_pct = (lucro_rs / live_aportado * 100) if live_aportado > 0 else 0
 
-        # Linha 1: Os Dados da Sua Carteira
         st.markdown("### 💼 Resumo da Carteira")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Depositado", formata_br(live_aportado))
         col2.metric("Patrimônio Real", formata_br(live_atual))
-        #col3.metric("Rentabilidade Real", formata_br(lucro_rs), f"{lucro_pct:+.2f}%".replace('.', ','))
-        # Define a cor e a seta baseada no lucro (Verde/↑ para Positivo, Vermelho/↓ para Negativo)
+        
         if lucro_rs >= 0:
             cor = "#00cc96"
             seta = "↑"
@@ -220,7 +274,6 @@ def render():
             
         pct_formatado = f"{lucro_pct:+.2f}%".replace('.', ',')
         
-        # Caixa 3: Rentabilidade (R$) colorida com seta
         col3.markdown(f"""
             <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (R$)</div>
@@ -228,7 +281,6 @@ def render():
             </div>
         """, unsafe_allow_html=True)
         
-        # Caixa 4: Rentabilidade (%) colorida com seta
         col4.markdown(f"""
             <div style="background-color: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.2); padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <div style="font-weight: 600; color: gray; font-size: 0.95rem; padding-bottom: 0.25rem;">Rentabilidade (%)</div>
@@ -236,7 +288,6 @@ def render():
             </div>
         """, unsafe_allow_html=True)
         
-        # Linha 2: Os Dados Teóricos (Benchmarks interativos)
         st.markdown("---")
         st.markdown("### 🔎 Simulador de Benchmarks (Saldo Teórico)")
         st.caption("E se todo o seu dinheiro tivesse sido investido nesses indicadores? Marque as opções para comparar:")
@@ -269,10 +320,9 @@ def render():
             
         st.markdown("---")
 
-        # --- GRÁFICO PLOTLY SUPER CARREGADO ---
+        # --- GRÁFICO PLOTLY ---
         fig = go.Figure()
 
-        # Linha Base: Dinheiro que saiu do bolso
         fig.add_trace(go.Scatter(
             x=df_timeline['MesExibicao'], y=df_timeline['TotalAportado'],
             mode='lines+markers', name='Total Depositado',
@@ -284,16 +334,14 @@ def render():
         cor_saldo = '#00cc96' if live_atual >= live_aportado else '#ef553b'
         cor_area = 'rgba(0, 204, 150, 0.25)' if live_atual >= live_aportado else 'rgba(239, 85, 59, 0.25)'
         
-        # Linha Principal: A Carteira do Usuário (Agora Patrimônio Real)
         fig.add_trace(go.Scatter(
             x=df_timeline['MesExibicao'], y=df_timeline['PatrimonioReal'],
-            mode='lines+markers', name='Patrimônio Real',
+            mode='lines+markers', name='Patrimônio Real (Histórico)',
             line=dict(color=cor_saldo, width=3),
             fill='tonexty', fillcolor=cor_area,
             hovertemplate="Patrimônio Real: R$ %{y:,.2f}<extra></extra>"
         ))
 
-        # --- INJEÇÃO DOS BENCHMARKS ATIVADOS NO CHECKBOX ---
         if show_cdi:
             fig.add_trace(go.Scatter(
                 x=df_timeline['MesExibicao'], y=df_timeline['Valor_CDI'],
@@ -336,22 +384,3 @@ def render():
         )
         
         st.plotly_chart(fig, width='stretch')
-
-        # --- AUDITORIA VISUAL ---
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🔍 Inspecionar Dados Lidos (Auditoria)"):
-            st.markdown("Confira nas tabelas abaixo em quais meses o sistema agrupou os seus lançamentos de caixa:")
-            c_dbg1, c_dbg2 = st.columns(2)
-            with c_dbg1:
-                st.markdown("**1. Movimentação de Caixa por Mês**")
-                if not df_dep_agrupado.empty:
-                    df_dep_exibicao = df_dep_agrupado.copy()
-                    df_dep_exibicao['Valor'] = df_dep_exibicao['Valor'].apply(formata_br)
-                    st.dataframe(df_dep_exibicao, hide_index=True, width='stretch')
-                else:
-                    st.info("Nenhuma movimentação agrupada.")
-            with c_dbg2:
-                st.markdown("**2. Acúmulo no Gráfico**")
-                df_dbg = df_timeline[['MesExibicao', 'TotalAportado', 'PatrimonioReal']].copy()
-                df_dbg.rename(columns={'TotalAportado': 'Linha Cinza', 'PatrimonioReal': 'Linha Colorida'}, inplace=True)
-                st.dataframe(df_dbg, hide_index=True, width='stretch')
