@@ -107,8 +107,8 @@ def render():
         # CAMADA 1: O TOPO EXECUTIVO (4 Pilares)
         # ==========================================
         col_c1, col_c2, col_c3, col_c4 = st.columns(4)
-        col_c1.metric("Patrimônio Real", formata_br(patrimonio_real))
-        col_c2.metric("Total Depositado", formata_br(total_depositado))
+        col_c1.metric("Total Depositado", formata_br(total_depositado))
+        col_c2.metric("Patrimônio Real", formata_br(patrimonio_real))
 
         # Cores e setas padronizadas para Rentabilidade e Evolução
         if rentabilidade_abs >= 0:
