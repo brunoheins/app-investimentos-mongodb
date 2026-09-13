@@ -1,3 +1,28 @@
+"""
+=====================================================================================
+Sincronizador de Dados Financeiros e Caches (ETL)
+=====================================================================================
+Descrição:
+    Script responsável por gerenciar e atualizar os caches no MongoDB, incluindo cotações
+    diárias de Renda Variável, Tesouro Direto, histórico de dividendos e o histórico 
+    mensal de preços de fechamento para os gráficos de evolução patrimonial.
+
+Como executar via terminal:
+    python scripts/sync_cache.py --modo [MODO]
+
+Modos de Execução Disponíveis (--modo):
+    - auto        : Executa o fluxo padrão automatizado (respeita regras de hora/dia do cron).
+    - tudo        : Executa uma carga completa (One-Shot) forçando a atualização de todos os caches.
+    - rv          : Atualiza apenas as cotações atuais de Renda Variável (Bolsa).
+    - tesouro     : Atualiza apenas os preços dos títulos do Tesouro Direto.
+    - dividendos  : Atualiza apenas o histórico de proventos/dividendos dos ativos.
+    - historico   : Atualiza o histórico mensal de preços de fechamento (últimos 5 anos).
+
+Variáveis de Ambiente Necessárias:
+    - MONGO_URI   : String de conexão com o banco de dados MongoDB Atlas.
+=====================================================================================
+"""
+
 import os
 import re
 import io
@@ -6,6 +31,7 @@ import requests
 import yfinance as yf
 from pymongo import MongoClient
 from datetime import datetime, timedelta
+import argparse
 
 def get_db():
     MONGO_URI = os.getenv("MONGO_URI")
@@ -174,15 +200,13 @@ def atualizar_dividendos(db, ativos_bolsa):
                 )
         except Exception as e:
             print(f"Erro ao baixar proventos para {ativo}: {e}")
-            
     print("✅ Histórico de Dividendos atualizado.")
 
 def atualizar_historico_mensal_ativos(db, ativos_bolsa):
-    """Baixa e consolida todo o histórico mensal de preços de fechamento (desde 5 anos atrás ou início da base) para o MongoDB."""
+    """Baixa e consolida todo o histórico mensal de preços de fechamento (últimos 5 anos) para o MongoDB."""
     print(f"=== Iniciando Sincronização do HISTÓRICO MENSAL DE PREÇOS ({len(ativos_bolsa)} ativos) ===")
     if not ativos_bolsa: return
 
-    # Define o range histórico (ex: últimos 5 anos até o mês atual)
     hoje = datetime.now()
     data_inicio = (hoje - timedelta(days=365 * 5)).strftime('%Y-%m-01')
     data_fim = hoje.strftime('%Y-%m-%d')
@@ -222,26 +246,49 @@ def atualizar_historico_mensal_ativos(db, ativos_bolsa):
 if __name__ == "__main__":
     db = get_db()
     
-    # 1. Ajuste de fuso horário seguro (UTC - 3)
-    agora_utc = datetime.utcnow()
-    agora_brt = agora_utc - timedelta(hours=3)
-    hora_atual = agora_brt.hour
-    dia_atual = agora_brt.day
-    
-    print(f"Iniciando rotina. Data/Hora BRT: Dia {dia_atual}, {hora_atual}h")
-    
-    # 2. Descobre todos os ativos no banco
+    parser = argparse.ArgumentParser(description="Sincronizador de Caches Financeiros")
+    parser.add_argument("--modo", type=str, default="auto", choices=["auto", "tudo", "rv", "tesouro", "dividendos", "historico"],
+                        help="Escolha o modo de execução: 'auto' (padrão do cron), 'tudo' (one-shot), ou um cache específico.")
+    args = parser.parse_args()
+
     titulos_td, ativos_bolsa = descobrir_todos_ativos(db)
-    
-    # 3. O MAESTRO: Rotinas horárias e diárias
-    atualizar_bolsa_rv(db, ativos_bolsa)
-    
-    if hora_atual in [10, 15]:
+
+    if args.modo == "tudo":
+        print("🚀 Executando carga completa ONE-SHOT de todos os caches...")
+        atualizar_bolsa_rv(db, ativos_bolsa)
+        atualizar_tesouro(db)
+        atualizar_dividendos(db, ativos_bolsa)
+        atualizar_historico_mensal_ativos(db, ativos_bolsa)
+        print("✅ Carga completa one-shot finalizada com sucesso!")
+        
+    elif args.modo == "rv":
+        atualizar_bolsa_rv(db, ativos_bolsa)
+        
+    elif args.modo == "tesouro":
         atualizar_tesouro(db)
         
-    if hora_atual == 9:
+    elif args.modo == "dividendos":
         atualizar_dividendos(db, ativos_bolsa)
-
-    # 4. ROTINA MENSAL: Executa apenas no dia 1º de cada mês às 4h da manhã
-    if dia_atual == 1 and hora_atual == 4:
+        
+    elif args.modo == "historico":
         atualizar_historico_mensal_ativos(db, ativos_bolsa)
+        
+    else:
+        # Modo automático (respeita a regra de horário/dia para o cron)
+        agora_utc = datetime.utcnow()
+        agora_brt = agora_utc - timedelta(hours=3)
+        hora_atual = agora_brt.hour
+        dia_atual = agora_brt.day
+        
+        print(f"Iniciando rotina automática. Data/Hora BRT: Dia {dia_atual}, {hora_atual}h")
+        
+        atualizar_bolsa_rv(db, ativos_bolsa)
+        
+        if hora_atual in [10, 15]:
+            atualizar_tesouro(db)
+            
+        if hora_atual == 9:
+            atualizar_dividendos(db, ativos_bolsa)
+
+        if dia_atual == 1 and hora_atual == 4:
+            atualizar_historico_mensal_ativos(db, ativos_bolsa)
