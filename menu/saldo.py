@@ -7,6 +7,57 @@ from datetime import datetime
 from utils import ler_planilha, obter_cotacoes, extrair_numero_br, formata_br, obter_historico_benchmarks, db
 
 # ==========================================
+# FUNÇÃO COM CACHE DE RAM + MONGODB (INCREMENTAL)
+# ==========================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def obter_historico_mensal_ativo(ativo, range_meses_tuple):
+    """
+    Busca o histórico mensal do ativo usando o MongoDB como cache persistente 
+    e o cache do Streamlit para performance em memória RAM.
+    """
+    range_meses = list(range_meses_tuple)
+    ticker_yf = ativo
+    if "." not in ticker_yf and not any(p in ticker_yf for p in ["TESOURO", " "]):
+        ticker_yf = f"{ticker_yf}.SA"
+
+    # 1. Consulta o cache no MongoDB
+    doc_mongo = db.historico_mensal_cache.find_one({"_id": ativo})
+    precos_salvos = doc_mongo.get("precos_mensais", {}) if doc_mongo else {}
+
+    # 2. Identifica quais meses ainda faltam
+    meses_faltantes = [m for m in range_meses if m not in precos_salvos]
+
+    # 3. Se faltar algo e não for Renda Fixa/Tesouro, busca no Yahoo Finance
+    if meses_faltantes and not any(p in ativo for p in ["TESOURO", " "]):
+        try:
+            dt_ini_dl = f"{min(meses_faltantes)}-01"
+            dt_fim_dl = (pd.to_datetime(f"{max(meses_faltantes)}-01") + pd.offsets.MonthEnd(1)).strftime('%Y-%m-%d')
+            
+            df_yf = yf.download(ticker_yf, start=dt_ini_dl, end=dt_fim_dl, interval='1mo', progress=False)
+            if not df_yf.empty and 'Close' in df_yf.columns:
+                df_close = df_yf['Close']
+                if isinstance(df_close, pd.DataFrame):
+                    df_close = df_close.iloc[:, 0]
+                if df_close.index.tz is not None:
+                    df_close.index = df_close.index.tz_localize(None)
+
+                for idx_date, val in df_close.items():
+                    m_str = str(idx_date)[:7]
+                    if pd.notna(val):
+                        precos_salvos[m_str] = float(val)
+
+                # Atualiza o MongoDB permanentemente
+                db.historico_mensal_cache.update_one(
+                    {"_id": ativo},
+                    {"$set": {"precos_mensais": precos_salvos}},
+                    upsert=True
+                )
+        except Exception as e:
+            print(f"Erro ao baixar histórico para {ativo}: {e}")
+
+    return precos_salvos
+
+# ==========================================
 # RENDERIZAÇÃO DA PÁGINA
 # ==========================================
 def render():
@@ -66,7 +117,6 @@ def render():
                 df_user_inv['TotalCusto'] = df_user_inv['Quantidade'] * df_user_inv['PrecoCusto']
                 df_user_inv['MesAno'] = df_user_inv['DataCompra'].dt.strftime('%Y-%m')
                 
-                # Agrupa por mês e ativo para saber exatamente o volume transacionado no período
                 df_inv_agrupado = df_user_inv.groupby(['MesAno', 'Ativo', 'Categoria']).agg({
                     'Quantidade': 'sum',
                     'TotalCusto': 'sum'
@@ -101,56 +151,20 @@ def render():
         dict_benchmarks = obter_historico_benchmarks(mes_inicial, mes_final)
         
         # ==========================================
-        # 1.1 CACHE INCREMENTAL DE PREÇOS MENSAIS (MONGODB)
+        # 1.1 SINCRONIZAÇÃO COM DUPLO CACHE (RAM + MONGO)
         # ==========================================
         st.write("Sincronizando histórico mensal de preços dos ativos...")
         ativos_unicos = df_inv_agrupado['Ativo'].unique().tolist() if not df_inv_agrupado.empty else []
-        precos_historicos_cache = {} # Mapeia {(ativo, mes): preco}
+        precos_historicos_cache = {} 
+
+        # Transforma em tupla para ser compatível com o @st.cache_data
+        range_meses_tuple = tuple(range_meses)
 
         for ativo in ativos_unicos:
-            ticker_yf = ativo
-            if "." not in ticker_yf and not any(p in ticker_yf for p in ["TESOURO", " "]):
-                ticker_yf = f"{ticker_yf}.SA"
-
-            # Consulta o cache no MongoDB para este ativo
-            doc_mongo = db.historico_mensal_cache.find_one({"_id": ativo})
-            precos_salvos = doc_mongo.get("precos_mensais", {}) if doc_mongo else {}
-
-            # Identifica quais meses da timeline ainda não estão salvos no banco
-            meses_faltantes = [m for m in range_meses if m not in precos_salvos]
-
-            if meses_faltantes and not any(p in ativo for p in ["TESOURO", " "]):
-                try:
-                    # Baixa do Yahoo Finance apenas o intervalo necessário para cobrir os meses faltantes
-                    dt_ini_dl = f"{min(meses_faltantes)}-01"
-                    dt_fim_dl = (pd.to_datetime(f"{max(meses_faltantes)}-01") + pd.offsets.MonthEnd(1)).strftime('%Y-%m-%d')
-                    
-                    df_yf = yf.download(ticker_yf, start=dt_ini_dl, end=dt_fim_dl, interval='1mo', progress=False)
-                    if not df_yf.empty and 'Close' in df_yf.columns:
-                        df_close = df_yf['Close']
-                        if isinstance(df_close, pd.DataFrame):
-                            df_close = df_close.iloc[:, 0]
-                        if df_close.index.tz is not None:
-                            df_close.index = df_close.index.tz_localize(None)
-
-                        for idx_date, val in df_close.items():
-                            m_str = str(idx_date)[:7]
-                            if pd.notna(val):
-                                precos_salvos[m_str] = float(val)
-
-                        # Atualiza o MongoDB com os novos meses baixados (Cache Incremental)
-                        db.historico_mensal_cache.update_one(
-                            {"_id": ativo},
-                            {"$set": {"precos_mensais": precos_salvos}},
-                            upsert=True
-                        )
-                except Exception as e:
-                    print(f"Erro ao baixar histórico para {ativo}: {e}")
-
+            precos_salvos = obter_historico_mensal_ativo(ativo, range_meses_tuple)
             for m in range_meses:
                 precos_historicos_cache[(ativo, m)] = precos_salvos.get(m, 0.0)
 
-        # Fallback de cotação atual caso o histórico mensal falhe para algum ativo recente
         cotacoes_atuais = obter_cotacoes(st.session_state.email)
 
         # ==========================================
@@ -199,14 +213,12 @@ def render():
         linha_patrimonio = []
         
         for i, mes in enumerate(range_meses):
-            # Soma todas as compras acumuladas até o mês atual
             compras_ate_mes = df_inv_agrupado[df_inv_agrupado['MesAno'] <= mes]
             
             valor_mercado_mes = 0.0
             custo_total_mes = 0.0
 
             if not compras_ate_mes.empty:
-                # Agrupa a quantidade total acumulada de cada ativo até este mês
                 posicao_acumulada = compras_ate_mes.groupby('Ativo').agg({
                     'Quantidade': 'sum',
                     'TotalCusto': 'sum',
@@ -219,17 +231,14 @@ def render():
                     custo = row['TotalCusto']
                     custo_total_mes += custo
 
-                    # Pega o preço histórico do final daquele mês específico no cache
                     preco_mes = precos_historicos_cache.get((ativo, mes), 0.0)
 
-                    # Se for Renda Fixa ou Tesouro (que não tem preço de bolsa mensal padrão), usa o custo ou cotação atual
                     if "TESOURO" in ativo or " " in ativo or row['Categoria'] == 'Renda Fixa':
                         preco_mes = cotacoes_atuais.get(ativo, custo / qtd if qtd > 0 else 0.0)
 
                     if preco_mes > 0:
                         valor_mercado_mes += qtd * preco_mes
                     else:
-                        # Fallback se não houver cotação histórica nem atual
                         valor_mercado_mes += custo
 
             aportado_ate_mes = linha_aportes[i]
@@ -351,7 +360,7 @@ def render():
             ))
             
         if show_ibov:
-            fig.add_trace(go.Scatter(
+            fig.add_trace(go.Scatter(xml_or_json=None,
                 x=df_timeline['MesExibicao'], y=df_timeline['Valor_IBOV'],
                 mode='lines+markers', name='Teórico IBOVESPA',
                 line=dict(color='#33b5e5', width=2, dash='dash'),
