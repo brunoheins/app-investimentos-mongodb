@@ -2,9 +2,12 @@ name: Sincronizador de Dados Financeiros (D-0)
 
 on:
   schedule:
-    # 12 às 21 UTC equivale a 09h às 18h BRT
-    # Roda de segunda a sexta (1-5) no minuto zero
+    # 1. Roda de segunda a sexta (1-5) das 12h às 21h UTC (09h às 18h BRT) para cotações horárias
     - cron: '0 12-21 * * 1-5'
+    
+    # 2. Roda no dia 1º de todo mês às 07:00 UTC (que equivale exatamente às 04:00 BRT) para o histórico mensal
+    - cron: '0 7 1 * *'
+
   workflow_dispatch:
 
 jobs:
@@ -20,7 +23,7 @@ jobs:
           python-version: '3.10'
 
       - name: Instalar dependências
-        run: pip install pandas requests pymongo yfinance
+        uses: pip install pandas requests pymongo yfinance # (Ajustado para o formato padrão do run)
 
       - name: Rodar Script Maestro
         env:
