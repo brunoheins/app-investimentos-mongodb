@@ -165,6 +165,7 @@ def render():
             for m in range_meses:
                 precos_historicos_cache[(ativo, m)] = precos_salvos.get(m, 0.0)
 
+        # Busca a cotação em tempo real (A MESMA USADA NO RESUMO.PY)
         cotacoes_atuais = obter_cotacoes(st.session_state.email)
 
         # ==========================================
@@ -219,10 +220,10 @@ def render():
             custo_total_mes = 0.0
 
             if not compras_ate_mes.empty:
-                posicao_acumulada = compras_ate_mes.groupby('Ativo').agg({
+                # Agrupa por ativo e Categoria para não perder a referência
+                posicao_acumulada = compras_ate_mes.groupby(['Ativo', 'Categoria']).agg({
                     'Quantidade': 'sum',
-                    'TotalCusto': 'sum',
-                    'Categoria': 'first'
+                    'TotalCusto': 'sum'
                 }).reset_index()
 
                 for _, row in posicao_acumulada.iterrows():
@@ -231,11 +232,19 @@ def render():
                     custo = row['TotalCusto']
                     custo_total_mes += custo
 
-                    preco_mes = precos_historicos_cache.get((ativo, mes), 0.0)
+                    # ----------------------------------------------------
+                    # SINCRONIA COM RESUMO.PY: O mês atual usa cotação Live!
+                    # ----------------------------------------------------
+                    if mes == mes_atual:
+                        preco_mes = cotacoes_atuais.get(ativo, 0.0)
+                    else:
+                        preco_mes = precos_historicos_cache.get((ativo, mes), 0.0)
 
+                    # Fallback de ativos não indexáveis (Renda Fixa/Tesouro)
                     if "TESOURO" in ativo or " " in ativo or row['Categoria'] == 'Renda Fixa':
-                        preco_mes = cotacoes_atuais.get(ativo, custo / qtd if qtd > 0 else 0.0)
+                        preco_mes = cotacoes_atuais.get(ativo, 0.0)
 
+                    # Se conseguiu cotação, precifica a mercado, senão usa o preço histórico de custo (Igual Resumo.py)
                     if preco_mes > 0:
                         valor_mercado_mes += qtd * preco_mes
                     else:
@@ -360,7 +369,7 @@ def render():
             ))
             
         if show_ibov:
-            fig.add_trace(go.Scatter(xml_or_json=None,
+            fig.add_trace(go.Scatter(
                 x=df_timeline['MesExibicao'], y=df_timeline['Valor_IBOV'],
                 mode='lines+markers', name='Teórico IBOVESPA',
                 line=dict(color='#33b5e5', width=2, dash='dash'),
