@@ -239,6 +239,11 @@ def render():
                 if not meus_depositos.empty:
                     meus_depositos = meus_depositos.drop(columns=['Email'])
                     
+                    # --- ORDENAÇÃO CRONOLÓGICA ---
+                    meus_depositos['Data_Sort'] = pd.to_datetime(meus_depositos['Data'], format='%d/%m/%Y', errors='coerce')
+                    meus_depositos = meus_depositos.sort_values(by='Data_Sort', ascending=True).drop(columns=['Data_Sort'])
+                    # -----------------------------
+
                     # Converte para string com vírgula para visualização perfeita
                     if 'Valor' in meus_depositos.columns:
                         meus_depositos['Valor'] = meus_depositos['Valor'].apply(limpa_numero_seguro).apply(formata_valor)
@@ -280,6 +285,12 @@ def render():
                 if not minhas_compras.empty:
                     minhas_compras = minhas_compras.drop(columns=['Email'])
                     
+                    # --- ORDENAÇÃO CRONOLÓGICA ---
+                    if 'DataCompra' in minhas_compras.columns:
+                        minhas_compras['Data_Sort'] = pd.to_datetime(minhas_compras['DataCompra'], format='%d/%m/%Y', errors='coerce')
+                        minhas_compras = minhas_compras.sort_values(by='Data_Sort', ascending=True).drop(columns=['Data_Sort'])
+                    # -----------------------------
+
                     col_preco = next((c for c in minhas_compras.columns if 'prec' in str(c).lower() or 'custo' in str(c).lower()), None)
                     col_qtd = 'Quantidade' if 'Quantidade' in minhas_compras.columns else None
 
