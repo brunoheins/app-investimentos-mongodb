@@ -304,9 +304,22 @@ else:
     if is_personificando:
         st.markdown("""
             <style>
+                /* Altera o fundo da barra lateral para indicar modo Admin */
                 [data-testid="stSidebar"] {
                     background-color: #3b0a0a !important;
                     border-right: 2px solid #ff4444 !important;
+                }
+                
+                /* CORREÇÃO DE CONTRASTE: Força o texto do menu para branco/claro para funcionar bem no Modo Light */
+                [data-testid="stSidebar"] p, 
+                [data-testid="stSidebar"] span, 
+                [data-testid="stSidebar"] div {
+                    color: #f8f9fa !important;
+                }
+                
+                /* Garante que os ícones SVG do menu também fiquem claros */
+                [data-testid="stSidebar"] svg {
+                    fill: #f8f9fa !important;
                 }
             </style>
         """, unsafe_allow_html=True)
