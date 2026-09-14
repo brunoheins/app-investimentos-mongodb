@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 import requests
 import yfinance as yf
 import re
-from datetime import datetime, timedelta # Importação ajustada para o limite de tempo
+from datetime import datetime, timedelta
 
 # ==========================================
 # 1. CONEXÃO COM O MONGODB ATLAS (V2)
@@ -134,7 +134,8 @@ def ler_planilha(aba_nome):
 
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro ao ler a tabela '{aba_nome}': {e}")
+        # CORREÇÃO DE CACHE REPLAY: Usa print em vez de st.error
+        print(f"Erro ao ler a tabela '{aba_nome}': {e}")
         return pd.DataFrame()
 
 # ==========================================
@@ -641,7 +642,8 @@ def obter_cotacoes(email_usuario):
             df_raw = yf.download(list(set(tickers_yf)), period="1d", progress=False, threads=True)
             
             if df_raw.empty:
-                st.toast("⚠️ Yahoo Finance não retornou dados. Usando backup.", icon="🚨")
+                # CORREÇÃO DE CACHE REPLAY: Usa print em vez de st.toast
+                print("⚠️ Yahoo Finance não retornou dados. Usando backup.")
                 raise Exception("YF vazio.")
                 
             s_last = df_raw.ffill().iloc[-1]
