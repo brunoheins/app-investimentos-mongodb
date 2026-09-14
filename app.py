@@ -310,15 +310,15 @@ else:
                     border-right: 2px solid #ff4444 !important;
                 }
                 
-                /* CORREÇÃO DE CONTRASTE: Força o texto do menu para branco/claro para funcionar bem no Modo Light */
-                [data-testid="stSidebar"] p, 
-                [data-testid="stSidebar"] span, 
-                [data-testid="stSidebar"] div {
+                /* CORREÇÃO DE CONTRASTE: Altera apenas o texto do MENU de navegação */
+                [data-testid="stSidebarNav"] span, 
+                [data-testid="stSidebarNav"] div,
+                [data-testid="stSidebarNav"] p {
                     color: #f8f9fa !important;
                 }
                 
-                /* Garante que os ícones SVG do menu também fiquem claros */
-                [data-testid="stSidebar"] svg {
+                /* Garante que os ícones SVG do menu de navegação também fiquem claros */
+                [data-testid="stSidebarNav"] svg {
                     fill: #f8f9fa !important;
                 }
             </style>
