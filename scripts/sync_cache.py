@@ -203,13 +203,22 @@ def atualizar_dividendos(db, ativos_bolsa):
     print("✅ Histórico de Dividendos atualizado.")
 
 def atualizar_historico_mensal_ativos(db, ativos_bolsa):
-    """Baixa e consolida todo o histórico mensal de preços de fechamento (últimos 5 anos) para o MongoDB."""
+    """Baixa e consolida apenas o histórico mensal faltante para o MongoDB."""
     print(f"=== Iniciando Sincronização do HISTÓRICO MENSAL DE PREÇOS ({len(ativos_bolsa)} ativos) ===")
     if not ativos_bolsa: return
 
     hoje = datetime.now()
-    data_inicio = (hoje - timedelta(days=365 * 5)).strftime('%Y-%m-01')
+    # Define a janela máxima de 5 anos para trás
+    data_inicio_padrao = (hoje - timedelta(days=365 * 5)).strftime('%Y-%m-01')
     data_fim = hoje.strftime('%Y-%m-%d')
+    mes_atual_str = hoje.strftime('%Y-%m')
+
+    # Gera a lista de todos os meses que DEVERÍAMOS ter nos últimos 5 anos
+    range_meses_necessarios = pd.date_range(start=data_inicio_padrao, end=hoje, freq='MS').strftime('%Y-%m').tolist()
+    
+    # Remove o mês atual da obrigatoriedade, pois ele ainda não fechou
+    if mes_atual_str in range_meses_necessarios:
+        range_meses_necessarios.remove(mes_atual_str)
 
     for ativo in ativos_bolsa:
         ticker = ativo
@@ -217,7 +226,23 @@ def atualizar_historico_mensal_ativos(db, ativos_bolsa):
             ticker = f"{ticker}.SA"
 
         try:
-            df_yf = yf.download(ticker, start=data_inicio, end=data_fim, interval='1mo', progress=False)
+            # 1. Consulta o que já temos no MongoDB
+            doc_mongo = db.historico_mensal_cache.find_one({"_id": ativo})
+            precos_mensais = doc_mongo.get("precos_mensais", {}) if doc_mongo else {}
+
+            # 2. Cruza os dados para achar apenas os buracos (meses faltantes)
+            meses_faltantes = [m for m in range_meses_necessarios if m not in precos_mensais]
+
+            if not meses_faltantes:
+                print(f"✅ {ativo}: Histórico já está 100% atualizado. Pulando...")
+                continue
+
+            # 3. Se falta algo, busca a partir do primeiro mês que está faltando
+            dt_ini_busca = f"{min(meses_faltantes)}-01"
+            print(f"⏳ {ativo}: Baixando dados faltantes a partir de {dt_ini_busca}...")
+            
+            df_yf = yf.download(ticker, start=dt_ini_busca, end=data_fim, interval='1mo', progress=False)
+            
             if not df_yf.empty and 'Close' in df_yf.columns:
                 df_close = df_yf['Close']
                 if isinstance(df_close, pd.DataFrame):
@@ -225,23 +250,30 @@ def atualizar_historico_mensal_ativos(db, ativos_bolsa):
                 if df_close.index.tz is not None:
                     df_close.index = df_close.index.tz_localize(None)
 
-                precos_mensais = {}
+                novos_dados = 0
                 for idx_date, val in df_close.items():
                     m_str = str(idx_date)[:7] # Formato YYYY-MM
-                    if pd.notna(val):
+                    # Guarda apenas se o valor for válido e não for o mês atual em andamento
+                    if pd.notna(val) and m_str != mes_atual_str:
                         precos_mensais[m_str] = float(val)
+                        novos_dados += 1
 
-                if precos_mensais:
+                # 4. Salva o dicionário complementado de volta no MongoDB
+                if novos_dados > 0:
                     db.historico_mensal_cache.update_one(
                         {"_id": ativo},
                         {"$set": {"precos_mensais": precos_mensais, "ultima_atualizacao": hoje}},
                         upsert=True
                     )
-            print(f"📊 Histórico mensal sincronizado para: {ativo}")
+                print(f"📊 {ativo}: +{novos_dados} meses adicionados.")
+            else:
+                print(f"⚠️ {ativo}: Yahoo Finance não retornou dados para o período solicitado.")
+                
         except Exception as e:
             print(f"❌ Erro ao atualizar histórico mensal de {ativo}: {e}")
             
-    print("✅ Histórico Mensal de Ativos atualizado com sucesso no MongoDB.")
+    print("✅ Processo de Histórico Mensal finalizado de forma incremental.")
+
 
 if __name__ == "__main__":
     db = get_db()
